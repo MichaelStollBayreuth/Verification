@@ -25,3 +25,13 @@ A file with Magma code verifying the claims in the paper is [here](GenFermat_2_3
 The file [Penkov_question.magma](PenkovQuestion/Penkov_question.magma)
 contains code to verify the results in Section 3.
 
+## Torsion points on elliptic curves over number fields of small degree
+
+(With Maarten Derickx, Sheldon Kamienny and William Stein; [arXiv](arxiv.org/abs/1707.00364))
+
+* [DKSS.magma](DKSS/DKSS.magma):
+  this contains code for verifying the computational results in the paper.
+
+* [X1_p.magma](DKSS/X1_p.magma):
+  this contains equations for models of $X_1(p)$ for the relevant primes $p$;
+  this file is loaded by DKSS.magma.
