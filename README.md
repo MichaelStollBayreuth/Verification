@@ -17,3 +17,11 @@ A file with Magma code verifying the claims in the paper is [here](GenFermat_2_3
 
 * [Section5_fibrations.magma](Cuboids/Section5_fibrations.log):
   this is the log of a Magma session computing the fibrations given in Section 5.
+
+## Prime numbers and dynamics of the polynomial $x^2 - 1$
+
+(With Ivan Penkov; [arXiv](https://arxiv.org/abs/2502.11929))
+
+The file [Penkov_question.magma](PenkovQuestion/Penkov_question.magma)
+contains code to verify the results in Section 3.
+
