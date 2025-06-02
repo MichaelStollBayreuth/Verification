@@ -27,7 +27,8 @@ contains code to verify the results in Section 3.
 
 ## Torsion points on elliptic curves over number fields of small degree
 
-(With Maarten Derickx, Sheldon Kamienny and William Stein; [arXiv](arxiv.org/abs/1707.00364))
+(With Maarten Derickx, Sheldon Kamienny and William Stein;
+[arXiv](arxiv.org/abs/1707.00364); [DOI](https://doi.org/10.2140/ant.2023.17.267))
 
 * [DKSS.magma](DKSS/DKSS.magma):
   this contains code for verifying the computational results in the paper.
@@ -38,14 +39,16 @@ contains code to verify the results in Section 3.
 
 ## The Weierstrass root finder is not generally convergent
 
-(With Bernhard Reinke and Dierk Schleicher; [arXiv](arxiv.org/abs/2004.04777))
+(With Bernhard Reinke and Dierk Schleicher;
+[arXiv](arxiv.org/abs/2004.04777); [DOI](https://doi.org/10.1090/mcom/3783))
 
 The file [Weierstrass-check.magma](Weierstrass/Weierstrass-check.magma)
 contains code to verify the results in Section 5.
 
 ## Irreducibility of polynomials with a large gap
 
-(With Will Sawin and Mark Shusterman; [arXiv](arxiv.org/abs/1803.10811))
+(With Will Sawin and Mark Shusterman;
+[arXiv](arxiv.org/abs/1803.10811); [DOI](https://doi.org/10.4064/aa180526-12-6))
 
 The file [SaShSt-polynomials.magma](SaShSt/SaShSt-polynomials.magma)
 contains Magma programs related to the paper.
@@ -64,7 +67,7 @@ contains Magma programs related to the paper.
 
 ## Diagonal genus 5 curves, elliptic curves over ${\mathbb Q}(t)$, and diophantine quintuples
 
-([arXiv](arxiv.org/abs/1711.00500))
+([arXiv](arxiv.org/abs/1711.00500); [DOI](https://doi.org/10.4064/aa180416-4-10))
 
 * [diophtuples.magma](DiophQuintuples/diophtuples.magma):
   this implements the algorithm described in Section 2 (assuming GRH)
