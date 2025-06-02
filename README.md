@@ -50,3 +50,15 @@ contains code to verify the results in Section 5.
 The file [SaShSt-polynomials.magma](SaShSt/SaShSt-polynomials.magma)
 contains Magma programs related to the paper.
 
+## An application of ``Selmer group Chabauty'' to arithmetic dynamics
+
+([arXiv](arxiv.org/abs/1912.05893))
+
+* [SelChabDyn.magma](SelChabDyn/SelChabDyn.magma):
+  this implements the algorithm described in Section 2 for curves of the form
+  $y^2 = x^{2g+1} +& h(x)^2$ with $h$ of degree at most $g$, integral coefficients
+  and such that $h(0)$ is odd and $h(1)$ is even.
+
+* [SelChabDyn-examples.magma](SelChabDyn/SelChabDyn-examples.magma):
+  this verifies the results in Section 3.
+

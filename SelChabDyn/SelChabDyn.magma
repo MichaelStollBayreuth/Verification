@@ -1,0 +1,435 @@
+// Implement the algorithm for "Selmer Group Chabauty" for curves of the form
+//   y^2 = x^{2g+1} + h(x)^2
+// (with some additional conditions on h in Z[x])
+// described in "An application of `Selmer Group Chabauty' to arithmetic dynamics".
+//
+// M. Stoll, started 2019-10-24
+
+// The following is a general function determining the minimum absolute
+// precision of a logarithm series to achieve a desired 2-adic precision
+// of the result when evaluating at a suitable value.
+function necessary_precision(a, b)
+  // a: a positive rational number s.t. the n-th term of the series
+  //    has 2-adic valuation >= a*n - v_2(n) + c with some c
+  // b: the desired precision - c
+  // (so that the result is the minimal n such that
+  //  (*) a*N - v_2(N) >= b  for all N >= n)
+
+  // First find smallest power of two (>= 1/a) that satisfies (*);
+  // this is an upper bound for n.
+  k := 0; n := 1;
+  while a*n lt Max(1, k+b) do
+    k +:= 1; n *:= 2;
+  end while;
+  // Now do binary search
+  k -:= 1; // 2-adic valuation of the difference of the interval endpoints 2^(k-1), 2^k
+  left := n div 2;
+  right := n;
+  while k gt 0 do
+    middle := (left + right) div 2;
+    k -:= 1; // new interval has half the length; this is also v_2(middle)
+    if a*middle - k ge b then
+      // middle is an upper bound, since a*n - v_2(n) does not get smaller to the right
+      right := middle;
+    else
+      // middle + 1 is a lower bound, since (*) is false for N = middle
+      left := middle;
+    end if;
+  end while;
+  // if k = 0, upper bound is result
+  return right;
+end function;
+
+// The following function determines the number of coefficients of
+// the series giving the differentials that are necessary to obtain
+// a given ansolute 2-adic precision for the logarithms, which use
+// parameters t such that v_2(t) >= 1/g (equality occurring).
+function necprec(g, prec)
+  // g:    genus
+  // prec: target precision
+
+  // The coefficients a_n in the series  omega = SUM_n a_n t^n dt
+  // satisfy v_2(a_n) >= ceil(-2n/(2g+1)).
+  // The series we need to compute have the form
+  //  SUM_{n>0} 2^n/n a_{dn-1} (1 <= d <= g)  or  SUM_{n>0} 4^n/n a_{dn-1} (d = 1,3,...,2g-1).
+  // So we need that
+  //   n - v_2(n) + ceil((2-2ng)/(2g+1)) > prec
+  // for n > n0; then result > g n0.
+  // Also,  2n - v_2(n) + ceil((2-2n(2g-1))/(2g+1)) > prec  for n > n0';
+  // then result > (2g-1) n0'.
+  // The first condition is satisfied when
+  //   (2+n)/(2g+1) - log_2 n > prec .
+  // When n > (2g+1)/log 2, the lhs is increasing. So start with a reasonable guess
+  // and increase n until the inequality is OK.
+  g2 := 2*g+1;
+  n := g2*(prec + Ceiling(Log(2, g2*prec)));
+  while (2+n)/g2 - Log(2, n) le prec do
+    n +:= 1;
+  end while;
+  result := g*(n-1) + 1;
+  // check second condition
+  n := ((result-1) div (2*g-1)) + 1;
+  assert (2+4*n)/g2 - Log(2, n) gt prec;
+  return result;
+end function;
+
+// This is similar, but for the logarithm series on the Q_2-residue disk around P_0.
+function necprec1(g, prec)
+  // The condition is
+  //   2/(2g+1) + (2g-1)/(2g+1) n - v_2(n) > prec
+  g2 := 2*g+1;
+  n := Ceiling((g2*prec-2)/(g2-2));
+  while (2 + (g2-2)*n)/g2 - Log(2, n) le prec do
+    n +:= 1;
+  end while;
+  return n;
+end function;
+
+// The following function checks that the image under \rho log
+// (i.e.  2 Z_2 -param-> C(Q_2) -i-> J(Q_2) -log*trans-> Z_2^g --> P^2(Q_2) --> P^2(F_2) )
+// of a residue disk does not meet what comes from the Selmer group.
+// The disk is given by a sequence of g power series giving the map
+//   Z_2 -2-> 2 Z_2 --> Z_2^g .
+function check(logs, prec, T, globinT)
+  // logs:    sequence of length g of power series
+  // prec:    absolute precision of values of the series when evaluated on Z_2
+  // T:       F_2-vector space of dimension g
+  // globinT: subspace of T that has to be avoided
+
+  // We do it recursively.
+  // Look at terms of lowest valuation.
+  serprec := Min([AbsolutePrecision(l) : l in logs]) - 1;
+  minval := prec;
+  support := [];
+  for j := 1 to serprec do
+    val := Min([Valuation(Coefficient(l, j), 2) : l in logs]);
+    if val lt minval then
+      minval := val;
+      support := [j]; // new minimum found;
+    elif val eq minval then
+      Append(~support, j); // additional place where minimum is reached
+    end if;
+  end for;
+  error if minval ge prec, "Insufficient precision in formal logs";
+  // Extract dominant term(s)
+  dom := &+[T!(2^-minval*Vector([Coefficient(l, j) : l in logs])) : j in support];
+  if dom eq T!0 then
+    // dominant terms cancel --> split into smaller disks
+    vprintf User1: "dom = 0 --> refine\n";
+    function check_rec(t0, pow2, val, depth)
+      error if val ge prec, "Insufficient precision in formal logs";
+      dom := T![2^-val*Evaluate(l, t0) : l in logs];
+      if dom eq T!0 then
+        // recurse
+        vprintf User1: " "^depth*"dom = 0 --> refine\n";
+        return check_rec(t0, 2*pow2, val+1, depth+1)
+                and check_rec(t0 - Sign(t0)*pow2, 2*pow2, val+1, depth+1);
+      elif dom in globinT then
+        vprintf User1: " "^depth*"dom = %o is in image of global units --> failure!\n", dom;
+        return false;
+      else
+        vprintf User1: " "^depth*"dom = %o is not in image of global units\n", dom;
+        return true;
+      end if;
+    end function;
+    if not check_rec(1, 4, minval+1, 1) or not check_rec(-1, 4, minval+1, 1) then
+      return false;
+    end if;
+  elif dom in globinT then
+    vprintf User1: "dom = %o is in image of global units --> failure!\n", dom;
+    return false;
+  else
+    vprintf User1: "dom = %o is not in image of global units\n", dom;
+  end if;
+  if support eq [1] then
+      // if linear term is dominant, this won't change for higher valuation of t
+    return true;
+  else
+    // consider next smaller disk
+    return check([Evaluate(l, 2*Universe(logs).1) : l in logs], prec, T, globinT);
+  end if;
+end function;
+
+function SelChab(g, h)
+  // g: natural number >= 1
+  // h: polynomial in Z[x]
+
+  h0 := h;
+  // check the arguments
+  error if not (Type(g) eq RngIntElt and g ge 1), "g must be a positive integer";
+  error if not (Type(h) eq RngUPolElt and Set(Coefficients(h)) subset Integers()),
+           "h must be a polynomial with integral coefficients";
+  PZ := PolynomialRing(Integers());
+  h := PZ!h;
+  error if Degree(h) gt g, "The degree of h must be <= g";
+  error if not (IsOdd(Evaluate(h, 0)) and IsEven(Evaluate(h, 1))),
+           "h(0) must be odd, h(1) must be even";
+  f := PZ.1^(2*g+1) + h^2;
+  vprintf User1: "SelChab: g = %o, h = %o\n\n", g, h0;
+  disc := Discriminant(f);
+  vprintf User1: "Factoring the discriminant of f ...\n";
+  vtime User1: fdisc := Factorization(disc);
+  badprimes := {Integers()| e[1] : e in fdisc | e[2] ge 2};
+  vprintf User1: "S = %o\n", badprimes;
+
+  // Set up the algebra A
+  P := PolynomialRing(Rationals()); x := P.1;
+  A, toA := quo<P | P!f>; // K as a quotient ring
+  Kprod, AtoKprod := AbsoluteAlgebra(A); // write A as a product of number fields
+  m := NumberOfComponents(Kprod);
+  vprintf User1: "J(Q)[2] has dimension %o\n\n", m-1;
+  vprintf User1: "Computing A(S, 2) ...\n";
+  vtime User1: U, AtoU, UtoBvec, B := pSelmerGroup(A, 2, badprimes join {2} : Raw);
+  Bseq := Eltseq(B); // sequence of elements in factor base
+  vprintf User1: "Dimension of A(S, 2) is %o\n", #Invariants(U);
+
+  // Find the subgroup U1 of U compatible with the local conditions at the real place.
+  // Determine the real embeddings and the order of the images of x.
+  r := &+[Signature(Kprod[i]) : i in [1..m]]; // number of real places of A
+  conjth := &cat[Conjugates(imth[i]) : i in [1..m]] where imth := AtoKprod(toA(x));
+  assert #conjth eq 2*g+1;
+  realplaces := [i : i in [1..2*g+1] | Imaginary(conjth[i]) eq 0];
+  assert #realplaces eq r;
+  realconjth := [Real(c) : c in conjth[realplaces]];
+  Sort(~realconjth, ~perm); // sort in ascending order
+  // perm is the permutation such that [Real(conjth[realplaces[i^perm]]) : i in [1..r]] = realconj
+  sortedplaces := [realplaces[i^perm] : i in [1..r]];
+  prec := Precision(Universe(realconjth));
+  // Set up H_infty and the map from U into it.
+  Hinf := AbelianGroup([2 : i in [1..r]]);
+  function signs(a)
+    ima := AtoKprod(a);
+    nma := Norm(a);
+    // Compute conjugates until precision is sufficient
+    prec1 := prec;
+    repeat
+      conjs := &cat[Conjugates(ima[i] : Precision := prec1) : i in [1..m]];
+      prec1 := Ceiling(1.2*prec1);
+    until Abs(nma - &*conjs) lt 1e-10;
+    // now return the signs of the real ones
+    return Hinf![Real(c) gt 0 select 0 else 1 : c in conjs[sortedplaces]];
+  end function;
+  BinHinf := [signs(b) : b in Bseq];
+  UtoHinf := hom<U -> Hinf | [&+[BinHinf[i] : i in [1..#Bseq] | IsOdd(imu[i])]
+                              where imu := UtoBvec(u)
+                               : u in OrderedGenerators(U)]>;
+  // The image of J(R) in H_infty (comes from the connected components of C(R)):
+  // subgroup of signs generated by  +...+-...-  (even number of -'es).
+  allowed := sub<Hinf | [Hinf![i le 2*n-1 select 0 else 1 : i in [1..r]] : n in [1..r div 2]]>;
+  U1 := (allowed meet Image(UtoHinf)) @@ UtoHinf;
+  vprintf User1: "Dimension after local conditions at infinity: %o\n", #Invariants(U1);
+
+  // Now take into account the local information at the (odd) bad primes.
+  for p in badprimes do
+    locp := LocalTwoSelmerMap(A, p);
+    Hp := Codomain(locp);
+    Qp := pAdicField(p, Max(10, Ceiling(100*Log(2)/Log(p))));
+    factfp := [e[1] : e in Factorization(PolynomialRing(Qp)!f)];
+    assert &+[Degree(pol) : pol in factfp] eq 2*g+1;
+    polsp := [P!(-1)^Degree(factfp[i])*
+                (factfp[i] - &*[Universe(factfp)| factfp[j] : j in [1..#factfp] | j ne i])
+               : i in [1..#factfp]];
+    imp := sub<Hp | [locp(toA(pol)) : pol in polsp]>;
+    if #Invariants(imp) ne #factfp-1 then
+      // Image of 2-torsion is not large enough (<==> nontrivial 4-torsion over Q_p).
+      // Test random potential b-polynomials for points on J over Q_p.
+      Zp := Integers(Qp);
+      count := 1;
+      repeat
+        bpol := Polynomial([Random(Zp) : i in [0..g]]);
+        fb := Factorization(Parent(bpol)!f - bpol^2);
+        for e in fb do
+          if Degree(e[1]) le g then
+            // <e[1], bpol> gives a point on the Jacobian over Q_p
+            imp +:= sub<Hp | locp(toA((-1)^Degree(e[1])*P!e[1]))>;
+          end if;
+        end for;
+        count +:= 1;
+      until #Invariants(imp) eq #factfp-1 or count gt 1000;
+      if #Invariants(imp) ne #factfp-1 then
+        // Random search unsuccessful --> give up.
+        printf "unable to determine local image at %o\n", p;
+        return false, -p;
+      end if;
+    end if;
+    BinHp := [locp(b) : b in Bseq];
+    UtoHp := hom<U -> Hp | [&+[BinHp[i] : i in [1..#Bseq] | IsOdd(imu[i])]
+                              where imu := UtoBvec(u)
+                               : u in OrderedGenerators(U)]>;
+    U1 meet:= (imp meet Image(UtoHp)) @@ UtoHp;
+    vprintf User1: "Dimension after local conditions at %o: %o\n", p, #Invariants(U1);
+  end for;
+
+  // Set up the map delta_2.
+  loc := LocalTwoSelmerMap(A, 2); // this gives the map A^x --> H_2
+  // The codomain is an elementary abelian 2-group; convert to a vector space.
+  H2 := KSpace(GF(2), #Invariants(Codomain(loc)));
+  // This is the map that one has to apply to (-1)^(deg a) a or variants thereof:
+  del2 := func<pol | H2!Eltseq(loc(toA(pol)))>;
+  // Set up Q_2.
+  Q2 := pAdicField(2, 100);
+  // Determine 2-torsion over Q_2.
+  fact := [e[1] : e in Factorization(ChangeRing(f, Q2))];
+  tdim := #fact - 1;
+  vprintf User1: "J(Q_2)[2] has dimension %o\n", tdim;
+
+  // Find image of delta_2 and a-polynomials of generators of J(Q_2)/2J(Q_2).
+  // The image is the image of x^d - 2 (d = 1,...,g) and x^d - 4 (d = 1,3,...,2g-1),
+  // where the first g are independent and we need tdim of the second ones.
+  basmod2J := [(-1)^d*(x^d-2) : d in [1..g]];
+  imbas := [del2(pol) : pol in basmod2J];
+  imdelta2 := sub<H2 | imbas>;
+  assert Dimension(imdelta2) eq g; // sanity check -- independence of the first g basis elements
+  // Now add the necessary further ones:
+  d := -1;
+  while Dimension(imdelta2) lt g + tdim do
+    d +:= 2;
+    pol := 4 - x^d;
+    impol := del2(pol);
+    if impol notin imdelta2 then
+      // found a new generator
+      Append(~basmod2J, pol);
+      Append(~imbas, impol);
+      imdelta2 +:= sub<H2 | impol>;
+    end if;
+  end while;
+  // Further sanity check: all further x^d - 4 do not give something new.
+  assert forall {j : j in [d+2..2*g-1 by 2] | del2(4 - x^j) in imdelta2};
+  // I is the set of d's used for the second bunch of generators.
+  I := {Degree(pol) : pol in basmod2J[g+1..g+tdim]};
+  vprintf User1: "I = %o\n\n", I;
+  // Set up an abstract F_2-vector space to represent imdelta2.
+  Vimdel2 := KSpace(GF(2), g+tdim);
+  isoim := hom<Vimdel2 -> imdelta2 | imbas>;
+
+  // Find the image of U1 in H_2 and the intersection with im(delta_2).
+  BinH2 := [loc(b) : b in Bseq];
+  U1images := [H2!Eltseq(&+[BinH2[i] : i in [1..#Bseq] | IsOdd(imu[i])])
+                    where imu := UtoBvec(U!u)
+                    : u in OrderedGenerators(U1)];
+  imU := sub<H2 | U1images>;
+  if Dimension(imU) ne Ngens(U1) then
+    vprintf User1: "localization map at 2 is not injective\n";
+    H2group := Codomain(loc);
+    U1toH2 := hom<U1 -> H2group | [H2group!Eltseq(im) : im in U1images]>;
+    U1 meet:= (sub<H2group | [H2group!Eltseq(d) : d in Generators(imdelta2)]> meet Image(U1toH2))
+                @@ U1toH2;
+    return false, #Invariants(U1);
+  end if;
+  // Determine the 2-Selmer group.
+  Sel := imU meet imdelta2;
+  if Dimension(Sel) eq 0 then
+    vprintf User1: "The 2-Selmer group is trivial ==> success!\n";
+    return true, 0;
+  end if;
+  vprintf User1: "The 2-Selmer group has dimension %o\n", Dimension(Sel);
+  glob := Sel @@ isoim;
+  vprintf User1: "and has basis %o in im(delta_2)\n\n", Basis(glob);
+  assert Dimension(glob) eq Dimension(Sel);
+
+  // We can now verify that there are no rational points with x-coordinate a 2-adic unit.
+  // Either there is a 2-adic point with x = 1 or there is one with x = -3,
+  // and it suffices to check that its image is not in Sel.
+  x0 := Valuation(Evaluate(h, 1), 2) eq 1 select -3 else 1;
+  assert IsSquare(Q2!Evaluate(f, x0));
+  imodd := del2(x0-x);
+  vprintf User1: "Image of points with odd x in im(delta_2) is %o\n", imodd @@ isoim;
+  if imodd in Sel then
+    vprintf User1: "Cannot rule out points with 2-adic unit x-coordinate\n";
+    return false, Dimension(Sel);
+  else
+    vprintf User1: "There are no rational points P with x(P) a 2-adic unit\n";
+  end if;
+
+  // Compute image of log.
+  // This is Z_2-generated by
+  //   SUM_{n>0} 2^n/n a_{dn-1}  for  1 <= d <= g
+  // and
+  //   SUM_{n>0} 4^n/n a_{dn-1}  for  d in I,
+  // where  (omega_0, ..., omega_{g-1}) = SUM_n t^n a_n dt
+  // with a_n in Q_2^g. We first compute this series representation.
+  vprintf User1: "\nDetermining the image of J(Q_2) under the 2-adic abelian logarithm...\n";
+  prec := 5; // target precision for log(...)
+  serprec := necprec(g, prec); // necessary series precision
+  vprintf User1: "Use series precision %o to obtain 2-adic precision %o for image of log\n",
+                 serprec, prec;
+  Pws := PowerSeriesAlgebra(Rationals(), serprec); t := Pws.1;
+  // omega_0 = dt/sqrt(f(t)),  omega_j = t^j omega_0
+  om0 := 1/Sqrt(Evaluate(f, t));
+  VQ2 := KSpace(Q2, g); // the tangent space of J(Q_2) at the origin; target of log
+  anseq := [VQ2![(Q2!(j lt d select 0 else Coefficient(om0, j-d))) + O(Q2!2^prec) : d in [0..g-1]]
+             : j in [0..serprec-1]];
+  // Set up matrix of logs
+  logmat := Matrix([&+[2^n/n*anseq[d*n] : n in [1..serprec div d]] : d in [1..g]]
+                    cat [&+[4^n/n*anseq[d*n] : n in [1..serprec div d]] : d in I]);
+  logmat +:= Matrix([[O(Q2!2^prec) : j in [1..g]] : i in [1..g+tdim]]);
+  // Change to a matrix over Z_2 to get correct echelonization.
+  Z2 := Integers(Q2);
+  logmatZ2 := ChangeRing(logmat, Z2);
+  // Now echelonize.
+  ech := Submatrix(EchelonForm(logmatZ2), 1,1, g,g);
+  assert forall{j : j in [1..g] | Valuation(ech[j,j]) lt prec};
+  // Convert into a matrix over Q and invert.
+  trans := ChangeRing(ech, Rationals())^-1;
+  vprintf User1: "The tranformation matrix log --> log' is\n\%o\n", trans;
+  loss := Min({Valuation(c, 2) : c in Eltseq(trans) | c ne 0});
+  // Set up map from im(delta_2) to im(log)/2 im(log).
+  mat := ChangeRing(ChangeRing(logmat*ChangeRing(trans, Q2), Z2), GF(2));
+  T := KSpace(GF(2), g);
+  Vimdel2toT := hom<Vimdel2 -> T | mat>;
+  globinT := glob @ Vimdel2toT;
+  vprintf User1: "Image of Selmer group in T generated by %o\n\n", Basis(globinT);
+
+  // Now look at points with v_2(x) > 0.
+  vprintf User1: "Considering points with even x...\n";
+  prec := 5; // target precision
+  serprec := necprec1(g, prec - loss); // account for loss of precision through mult. by trans
+  vprintf User1: "Use series precision %o for log series at P_0 to obtain 2-adic precision %o\n",
+                 serprec, prec;
+  // Compute formal log series, composed with trans to get image in Z_2^g.
+  if serprec+1 gt Pws`Precision then
+    // recompute differentials to higher precision
+    Pws := PowerSeriesAlgebra(Rationals(), serprec+1); t := Pws.1;
+    // omega_0 = dt/sqrt(f(t)),  omega_j = t^j omega_0
+    om0 := 1/Sqrt(Evaluate(f, t));
+  end if;
+  logs := [Evaluate(Integral(t^d*om0 + O(t^serprec)), 2*t) : d in [0..g-1]];
+  // Transform using trans.
+  logs := Eltseq(Vector(logs)*ChangeRing(trans, Pws));
+  flag := check(logs, prec, T, globinT);
+  if not flag then return false, Dimension(Sel); end if;
+  vprintf User1: "There are no rational points P with x(P) /= 0 and v_2(x(P)) > 0\n\n";
+
+  // Now consider the residue class of the point at infinity.
+  // We use the uniformizer  t = y/x^{g+1}. Let xx = 1/x; then
+  //  x^j dx/y = -2 xx^{g-1-j}/ff'(xx) dt,
+  // where  ff(xx) = xx^{2g+2} f(1/xx) = xx + O(xx^2)  and
+  //  t^2 = ff(xx),  so  xx = t^2 - xx^2 (...), which has a unique solution
+  //  xx(t) in Z[[t^2]].
+  // So  omega_j  is a series in 2 Z[[t^2]] times dt
+  //  ==> the formal integral has only terms with odd exponents,
+  //      denominators are 2-adically invertible.
+  // The necessary precision is simply  prec - loss.
+  vprintf User1: "Considering points with x not 2-adically integral...\n";
+  serprec := prec - loss;
+  vprintf User1: "Use series precision %o for log series at oo to obtain 2-adic precision %o\n",
+                 serprec, prec;
+  ff := P!([0] cat Reverse(Coefficients(f)));
+  dff := Derivative(ff);
+  // Determine xx
+  xx := O(t^serprec);
+  // do Newton iteration
+  repeat
+    oldxx := xx;
+    xx -:= (Evaluate(ff, xx) - t^2)/Evaluate(dff, xx);
+  until xx eq oldxx;
+  dffi := 1/Evaluate(dff, xx);
+  logs := [Evaluate(Integral(-2*xx^(g-1-j)*dffi + O(t^serprec)), 2*t) : j in [0..g-1]];
+  // Transform using trans
+  logs := Eltseq(Vector(logs)*ChangeRing(trans, Pws));
+  flag := check(logs, prec, T, globinT);
+  if not flag then return false, Dimension(Sel); end if;
+  vprintf User1: "There are no rational points P with v_2(x(P)) < 0\n\n";
+
+  return true, Dimension(Sel);
+end function;

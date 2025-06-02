@@ -1,0 +1,224 @@
+// Magma computations related to Section 3
+// of "An application of `Selmer group Chabauty' to arithmetic dynamics"
+
+
+// Load the general code.
+load "SelChabDyn.magma";
+// Set the verbose flag so that we can see what the code is doing.
+SetVerbose("User1", true);
+
+// Do the computations for the curves
+//  y^2 = a_5(x),  y^2 = a_7(x),  y^2 = -a_5(-x).
+
+// Define the sequence of a_n's.
+P<x> := PolynomialRing(Rationals());
+aseq := [n eq 1 select P!1 else x^(2^(n-1)-1) + Self(n-1)^2 : n in [1..7]];
+
+// Run the code for  y^2 = a_5(x) ,  i.e., g = 7, h = a_4.
+printf "\n"*"="^70*"\n";
+printf "Proof of  a_5(x) is a square <==> x = 0\n";
+printf "="^70*"\n\n";
+assert SelChab(7, aseq[4]);
+
+// During this computation, we have verified that the class group of
+// Q(th) is trivial, where th is a root of a_5. For completeness,
+// we make this eplicit.
+K := NumberField(aseq[5]);
+assert ClassNumber(Integers(K)) eq 1;
+
+// Now,  y^2 = -a_5(-x) = x^15 - a_4(-x)^2.
+// This curve is not of precisely the form the code works with,
+// so we do most steps by hand.
+// Compare the code in SelChabDyn.magma
+
+// The curve is isomorphic to the first one over Q(i), so we
+// work over this field for computations.
+printf "\n"*"="^70*"\n";
+printf "Proof of  -a_5(x) is a square <==> x = 1\n";
+printf "="^70*"\n\n";
+
+// Set up some basic related objects.
+h := Evaluate(aseq[4], -x);
+f := -Evaluate(aseq[5], -x);
+g := 7;
+
+K := NumberField(f); // isomorphic to previous K, but generator is -th
+OK := Integers(K);
+U, mU := UnitGroup(OK);
+vprintf User1: "Dimension of A(S, 2) is %o\n", #Invariants(U);
+
+// Take into account info at infinity.
+r := Signature(K);
+conjth := Conjugates(K.1);
+realplaces := [i : i in [1..2*g+1] | Imaginary(conjth[i]) eq 0];
+realconjth := [Real(c) : c in conjth[realplaces]];
+Sort(~realconjth, ~perm); // sort in ascending order
+sortedplaces := [realplaces[i^perm] : i in [1..r]];
+Hinf := AbelianGroup([2 : i in [1..r]]);
+prec := Precision(Universe(realconjth));
+function signs(a)
+  nma := Norm(a);
+  prec1 := prec;
+  repeat
+    conjs := Conjugates(a : Precision := prec1);
+    prec1 := Ceiling(1.2*prec1);
+  until Abs(nma - &*conjs) lt 1e-10;
+  return Hinf![Real(c) gt 0 select 0 else 1 : c in conjs[sortedplaces]];
+end function;
+UtoHinf := hom<U -> Hinf | [signs(mU(U.i)) : i in [1..Ngens(U)]]>;
+allowed := sub<Hinf | [Hinf![i le 2*n-1 select 0 else 1 : i in [1..r]] : n in [1..r div 2]]>;
+U1 := (allowed meet Image(UtoHinf)) @@ UtoHinf;
+vprintf User1: "Dimension after local conditions at infinity: %o\n", #Invariants(U1);
+
+// Set up algebra A.
+A, toA := quo<P | f>;
+KtoA := hom<K -> A | A.1>;
+loc := LocalTwoSelmerMap(A, 2);
+H2 := KSpace(GF(2), #Invariants(Codomain(loc)));
+del2 := func<pol | H2!Eltseq(loc(toA(pol)))>;
+Q2 := pAdicField(2, 100);
+fact := [e[1] : e in Factorization(ChangeRing(f, Q2))];
+tdim := #fact - 1;
+vprintf User1: "J(Q_2)[2] has dimension %o\n", tdim;
+
+// Image of delta_2.
+// The a-polynomials below were found by search.
+bas := [ x^2 + 2*x + 2, x^4 + 2*x^3 + 2, x^4 + 2*x^2 + 2, x^6 + 2*x^3 + 2,
+         x^6 + 2*x^5 + 2*x^4 + 2*x^3 + 2, x - 1, x^2 + x + 1,
+         x^3 - 2*x^2 + 3*x - 1, x^6 + 2*x^5 - 2*x^3 - 3*x - 3 ];
+// Check that these give 2-adic points.
+// (Note that each polynomial is either 2-Eisenstein or reduces to an irreducible
+// polynomial over F_2, so ext<Q2 | b> below works.)
+assert forall{b : b in bas | IsSquare(Evaluate(f, L.1)) where L := ext<Q2 | b>};
+imbas := [H2!Eltseq(loc((-1)^Degree(b)*b)) : b in bas];
+imdelta2 := sub<H2 | imbas>;
+assert Dimension(imdelta2) eq g + tdim;
+Vimdel2 := KSpace(GF(2), g+tdim);
+isoim := hom<Vimdel2 -> imdelta2 | imbas>;
+
+U1toH2 := hom<U1 -> Codomain(loc) | [loc(KtoA(mU(U!U1.i))) : i in [1..Ngens(U1)]]>;
+assert Kernel(U1toH2) subset 2*U; // sigma is injective
+imU := sub<H2 | [H2!Eltseq(Codomain(loc)!u) : u in Generators(Image(U1toH2))]>;
+Sel := imU meet imdelta2;
+vprintf User1: "The 2-Selmer group has dimension %o\n", Dimension(Sel);
+glob := Sel @@ isoim;
+vprintf User1: "and has basis %o in im(delta_2)\n\n", Basis(glob);
+assert Dimension(glob) eq Dimension(Sel);
+
+// Compute image of log.
+// The first five elements of bas have roots near zero (valuation >= 1/6).
+// We compute their logs by using the point (0, i) as base point.
+Qi := NumberField(x^2 + 1);
+Q2i := ext<Q2 | x^2 + 2*x + 2>; // Q2i.1 = -1 + i
+iQ2 := Q2i.1 + 1;
+QitoQ2i := hom<Qi -> Q2i | iQ2>;
+vprintf User1: "\nDetermining the image of J(Q_2) under the 2-adic abelian logarithm...\n";
+prec := 5; // target precision for log(...)
+serprec := necessary_precision(1/6-2/15, prec) + 10;
+vprintf User1: "Use series precision %o to obtain 2-adic precision %o for image of log\n", serprec, prec;
+Pws := LaurentSeriesAlgebra(Q2i, serprec); t := Pws.1;
+om0 := iQ2/Sqrt(Pws!-f);
+logs0 := [Integral(t^j*om0) + O(t^serprec) : j in [0..g-1]]; // log series near (0, i)
+// evaluate logs0 on bas[1..5]
+logs := [];
+for j := 1 to 5 do
+  b := bas[j];
+  // Over Q_2(i), b splits into two factors.
+  // We have to take the difference of the corresponding logs
+  // (to make sure we use the same base point for both factors).
+  factb := Factorization(PolynomialRing(Q2i)!b);
+  assert #factb eq 2;
+  pwss := [[Coefficient(s, j) : j in [0..serprec-1]]
+             where s := -Derivative(p)/p where p := Pws!Reverse(Coefficients(e[1]))
+            : e in factb];
+  l := [&+[Coefficient(l, j)*(pwss[1,j]-pwss[2,j]) : j in [1..serprec-1]] : l in logs0];
+  assert forall{a : a in l | Valuation(a - Trace(a)/2) ge 2*prec};
+  Append(~logs, [Q2!(a + O(Q2i!2^prec)) : a in l]);
+end for;
+// The remaining four elements of bas have unit roots.
+// We use the parameter  t = (y + i h(x))/x^(g+1)  at infinity.
+vprintf User1: "expanding differentials at infinity...\n";
+time rts := Roots(PwsQi.1^2*PP.1^8 - 2*Qi.1*Evaluate(h,PP.1)*PwsQi.1 - PP.1^7)
+      where PP := PolynomialRing(PwsQi)
+      where PwsQi := LaurentSeriesAlgebra(Qi, serprec);
+assert #rts eq 1 and rts[1,2] eq 1;
+xint := t^Valuation(rts[1,1])*Pws![QitoQ2i(c) : c in Coefficients(rts[1,1])];
+yint := xint^8*t - iQ2*Evaluate(h, xint);
+serprec_old := serprec;
+serprec := necessary_precision(1/15, prec) + 10;
+assert serprec le serprec_old;
+ominf := Derivative(xint)/yint;
+logsinf := [Integral(xint^j*ominf) + O(t^serprec) : j in [0..g-1]];
+P3<u,v,w> := PolynomialRing(Qi, 3);
+for j := 6 to #bas do
+  b := bas[j];
+  // eliminate x and y from
+  // b(x) = 0,  y^2 = f(x), x^8 t = y + i h(x)
+  pol := Basis(EliminationIdeal(ideal<P3 | Evaluate(b, u), v^2 - Evaluate(f, u),
+                                           u^8*w - v - Qi.1*Evaluate(h, u)>, {w}))[1];
+  polt := Evaluate(pol, [0, 0, PolynomialRing(Qi).1]);
+  polt2 := Polynomial([QitoQ2i(c) : c in Coefficients(polt)]);
+  factp := Factorization(polt2);
+  assert #factp eq 2 and forall{e : e in factp | e[2] eq 1};
+  pws := [Coefficient(s, j) : j in [0..serprec-1]]
+             where s := -Derivative(p)/p where p := Pws!Reverse(Coefficients(factp[1,1]));
+  l := [&+[Coefficient(l, j)*pws[j] : j in [1..serprec-1]] : l in logsinf];
+  assert forall{a : a in l | Valuation(a - Trace(a)/2) gt 2*prec};
+  Append(~logs, [Q2!(a + O(Q2i!2^prec)) : a in l]);
+end for;
+// Change to a matrix over Z_2 to get correct echelonization.
+Z2 := Integers(Q2);
+logmat := Matrix(logs);
+logmatZ2 := ChangeRing(logmat, Z2);
+// Now echelonize
+ech := Submatrix(EchelonForm(logmatZ2), 1,1, g,g);
+assert forall{j : j in [1..g] | Valuation(ech[j,j]) lt prec};
+// Convert into a matrix over Q and invert.
+trans := ChangeRing(ech, Rationals())^-1;
+vprintf User1: "The tranformation matrix log --> log' is\n\%o\n", trans;
+loss := Min({Valuation(c, 2) : c in Eltseq(trans) | c ne 0});
+// Set up map from im(delta_2) to im(log)/2 im(log)
+mat := ChangeRing(ChangeRing(logmat*ChangeRing(trans, Q2), Z2), GF(2));
+T := KSpace(GF(2), g);
+Vimdel2toT := hom<Vimdel2 -> T | mat>;
+globinT := glob @ Vimdel2toT;
+vprintf User1: "Image of global units in T generated by %o\n\n", Basis(globinT);
+
+// Since  f(x) = x^15 - h(x)^2 = -1 mod 8  for even x,
+// there are no rational points with v_2(x) > 0.
+vprintf User1: "There are no rational points P with v_2(x(P)) > 0.\n\n";
+
+// Consider points with v_2(x) = 0. They must have x = 1 mod 8.
+assert {xi : xi in {-3,-1,1,3} | IsSquare(Evaluate(f, Q2!xi))} eq {1};
+// We expand the logarithms near (1, 1) in t = x-1; we'll have v_2(t) >= 3.
+Pws := PowerSeriesAlgebra(Rationals(), 50); t := Pws.1; // 50 is enough by far
+om1 := 1/Sqrt(Evaluate(f, 1+t));
+logs1 := [Evaluate(Integral((1+t)^j*om1), 8*t) : j in [0..g-1]];
+logs1 := Eltseq(Vector(logs1)*ChangeRing(trans, Pws));
+assert check(logs1, 5, T, globinT);
+vprintf User1: "There are no rational points P /= (1,+-1) with v_2(x(P)) = 0.\n\n";
+
+// Finally, points near infinity (v_2(x) < 0).
+serprec := 40;
+ff := P!([0] cat Reverse(Coefficients(f)));
+dff := Derivative(ff);
+// Determine xx = 1/x in terms of t = y/x^8
+xx := O(t^serprec);
+// do Newton iteration
+repeat
+  oldxx := xx;
+  xx -:= (Evaluate(ff, xx) - t^2)/Evaluate(dff, xx);
+until xx eq oldxx;
+dffi := 1/Evaluate(dff, xx);
+logs := [Evaluate(Integral(-2*xx^(g-1-j)*dffi + O(t^serprec)), 2*t) : j in [0..g-1]];
+logs := Eltseq(Vector(logs)*ChangeRing(trans, Pws));
+assert check(logs, prec, T, globinT);
+vprintf User1: "There are no rational points P with v_2(x(P)) < 0.\n\n";
+
+// Finally, deal with  y^2 = a_7(x). We need to assume GRH to make this feasible.
+// The computation takes a few hours.
+printf "\n"*"="^70*"\n";
+printf "Proof of  a_7(x) is a square <==> x = 0\n";
+printf "="^70*"\n\n(This will take a few hours...)\n\n";
+SetClassGroupBounds("GRH");
+assert SelChab(31, aseq[6]);
