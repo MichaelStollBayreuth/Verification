@@ -86,7 +86,7 @@ contains Magma programs related to the paper.
 [arXiv](https://arxiv.org/abs/1703.05058); [DOI](https://doi.org/10.1112/S0010437X19007693))
 
 * [GenFermat.tar.gz](GenFermat_2_3_p/GenFermat.tar.gz):
-  a compressed tarball containing all of the following files
+  a compressed tarball containing all of the following files.
 
 * [main.magma](GenFermat_2_3_p/main.magma):
   this loads the following four files and so verifies everything.
