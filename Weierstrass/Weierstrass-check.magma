@@ -1,0 +1,508 @@
+// Magma script for the verification of the results in
+// "The Weierstrass root finder is not generally convergent"
+// by B. Reinke, D. Schleicher and M. Stoll
+
+printf "\n================================================================\n\n";
+
+printf "Section 4\n";
+printf "---------\n\n";
+
+// We check the claims made in Lemma 4.4
+
+// Look at the Weierstrass iteration for p = Z^d.
+// eqns(d, vars1, vars2) gives the equations satisfied when
+// vars2 is the image of vars1 under the iteration.
+function eqns(d, vars1, vars2)
+  P := PolynomialRing(Universe(vars1));
+  pol1 := &*[P.1 - v : v in vars1]; // polynomial on the left
+  pol2 := &+[(vars2[k] - vars1[k])*&*[P.1 - vars1[j] : j in [1..d] | j ne k]
+              : k in [1..d]];
+  return [Coefficient(pol1, j) - Coefficient(pol2, j) : j in [0..d-1]];
+end function;
+
+// Set up the scheme P_d^{(0)}(n)
+function perpts(d, n)
+  // d: degree, p = Z^d
+  // n: period length
+  Aff<[z]> := AffineSpace(Rationals(), (d-1)*n);
+  // points in cycle are (z[1],...,z[d-1],-z[1]-...-z[d-1]), (z[d],..., -z[d]-...), ...
+  P := PolynomialRing(CoordinateRing(Aff));
+  // Set up system of equations based on
+  //  prod_j (Z - z_j) - Z^d = sum_k (z'_k - z_k) prod_{j != k} (Z - z_j)
+  varseq := [Append(zseq, -&+zseq) where zseq := z[j*(d-1)+1..j*(d-1)+d-1] : j in [0..n-1]];
+  return Scheme(Aff, &cat[eqns(d, varseq[j], varseq[j+1]) : j in [1..n-1]]
+                        cat eqns(d, varseq[n], varseq[1]));
+end function;
+
+// Now check that P_3^{(0)}(n) = {0} for n = 1,2,3,4,5, 7,8 .
+
+for n in [1..5] cat [7] do
+  printf "verifying that P_3^{(0)}(%o) = {0}...\n", n;
+  time assert IsEmpty(Scheme(S, S.1-1)) where S := perpts(3, n);
+  printf "... done\n";
+end for;
+
+// For n = 8, this takes several hours (therefore left commented out).
+/*
+printf "verifying that P_3^{(0)}(8) = {0}... (will take several hours and ~12 GB of memory)\n";
+pols := DefiningPolynomials(perpts(3, 8));
+// we set the last variable to 1 explicitly
+P15 := PolynomialRing(Rationals(), 15);
+subs := [P15.i : i in [1..15]] cat [1];
+time assert IsEmpty(Scheme(AffineSpace(P15), [Evaluate(p, subs) : p in pols]));
+printf "... done\n";
+*/
+
+printf "\n";
+
+// Now consider n = 6.
+S := perpts(3, 6);
+S1 := Scheme(S, S.1-1);
+// dehomogenizing, we find six points
+// ==> the original scheme S consists of six lines through 0
+assert Dimension(S1) eq 0 and Degree(S1) eq 6;
+
+// We check that these points correspond to cycles of rotation type.
+// This means that either
+//  z[1] - z[6] = z[1] + z[2] + z[5] = 0
+// or
+//  z[2] - z[5] = z[1] + z[2] + z[6] = 0.
+_<[z]> := CoordinateRing(Ambient(S));
+Srot := Scheme(Ambient(S), [z[1]-z[6], z[1]+z[2]+z[5]])
+          join Scheme(Ambient(S), [z[2]-z[5], z[1]+z[2]+z[6]]);
+assert S1 subset Srot;
+
+// This implies that the other components of P'_3(6)
+// (i.e., not of rotation type) meet P_3^{(0)}(6) in {0},
+// hence there are finitely many such 6-cycles for all
+// polynomials of degree 3.
+
+// It remains to check that polynomials with at least two distinct roots
+// have only finitely many 6-cycles of rotation type.
+
+// To do this, we set up the equations describing these cycles
+// for a polynomial p = Z^3 + a*Z + b, where a = 1 or b = 1
+// (a = b = 0 corresponds to a triple root), and verify that
+// it has dimension 1 and no vertical components under projection
+// to the b- or a-line.
+P<a,x1,x2,y1,y2> := PolynomialRing(Rationals(), 5);
+eq1 := eqns(3, [x1, x2, -x1-x2], [y1, y2, -y1-y2]);
+eq2 := eqns(3, [y1, y1, -y1-y2], [x2, -x1-x2, x1]);
+assert eq1[3] eq 0 and eq2[3] eq 0; // comes from hyperplane relation
+// use relation (3.5)
+// first case: a = 1 (and b = a)
+Sa := Scheme(AffineSpace(P), [eq1[1]-a, eq1[2]-1, eq2[1]-a, eq2[2]-1]);
+// second case: b = 1
+Sb := Scheme(AffineSpace(P), [eq1[1]-1, eq1[2]-a, eq2[1]-1, eq2[2]-a]);
+// produce projection map to the a-line
+proj := func<S | map<S -> AffineSpace(Rationals(), 1) | [S.1]>>;
+assert forall{c : c in IrreducibleComponents(Sa) | Dimension(Image(proj(c))) eq 1};
+assert forall{c : c in IrreducibleComponents(Sb) | Dimension(Image(proj(c))) eq 1};
+
+printf "claims on n = 6 in Lemma 4.4 are verified.\n\n";
+
+// Verify the claims for d = 4 made in Remark 4.5.
+for n in [1..3] do
+  printf "verifying that P_4^{(0)}(%o) = {0}...\n", n;
+  time assert IsEmpty(Scheme(S, S.1-1)) where S := perpts(4, n);
+  printf "... done\n";
+end for;
+
+printf "\n\nSection 5\n";
+printf "---------\n\n";
+
+// Define W_p
+function iter(p, v)
+  // p: monic polynomial in one variable
+  // v: sequence of distinct elements, length(v) = degree(p)
+  assert #v eq Degree(p);
+  return [v[k] - Evaluate(p, v[k])/&*[v[k]-v[i] : i in [1..#v] | i ne k] : k in [1..#v]];
+end function;
+
+// This gives the iteration for cubics p = Z^3 + a Z + b
+// in terms of w_2 = \sigma_2(z) - a, w_3 = \sigma_3(z) + b.
+function iter2(a, b, w2, w3)
+  den := 4*(a + w2)^3 + 27*(b - w3)^2; // disc(z^3 + (a + w2)*z + (b - w3))
+  num2 := a^2*w2^2 + 2*a*w2^3 - 3*a*w3^2 - 9*b*w2*w3 + w2^4 + 6*w2*w3^2;
+  num3 := 4*a^2*w2*w3 + 3*a*b*w2^2 + 4*a*w2^2*w3 + 2*b*w2^3 - 9*b*w3^2 + w2^3*w3 + 8*w3^3;
+  return num2/den, num3/den;
+end function;
+
+// The jacobi matrix of iter (for pol = Z^3 + Z + t)
+jaciter := Matrix([[Derivative(x, 2), Derivative(x, 3)],
+                   [Derivative(y, 2), Derivative(y, 3)]])
+              where x, y := Explode(iter(Polynomial([F.1, 1, 0, 1]), [F.2, F.3, -F.2-F.3]))
+              where F := FunctionField(Rationals(), 3);
+
+// The jacobi matrix of iter2
+jaciter2 := Matrix([[Derivative(x, 2), Derivative(x, 3)],
+                    [Derivative(y, 2), Derivative(y, 3)]])
+              where x, y := iter2(1, F.1, F.2, F.3)
+              where F := FunctionField(Rationals(), 3);
+
+// Check that iter2 really is the image of iter under the quotient map (Lemma 5.1).
+F<a,b,z1,z2> := FunctionField(Rationals(), 4);
+p := Polynomial([b, a, 0, 1]);
+v1 := iter(p, [z1, z2, -z1-z2]);
+// note that \sigma_2(z_1, z_2, -z_1-z_2) = -(z_1^2 + z_1 z_2 + z_2^2)
+// and \sigma_3(z_1, z_2, -z_1-z_2) = -z_1 z_2 (z_1 + z_2)
+i1, j1 := iter2(a, b, -(z1^2 + z1*z2 + z2^2)-a, -z1*z2*(z1+z2)+b);
+assert &+v1 eq 0 and i1 eq v1[1]*v1[2]+v1[1]*v1[3]+v1[2]*v1[3]-a and j1 eq &*v1+b;
+
+printf "Lemma 5.1 is verified.\n\n";
+
+//=========================================================================
+
+// Set up equations relating z to its image z' under W_p.
+// The relation is given by
+//  prod_{k=1}^d (Z - z_k) - p(Z) = sum_{k=1}^d (z'_k - z_k) prod_{j/=k} (Z - z_j) .
+function eqns(pol, vars1, vars2)
+  // pol: the polynomial p (monic)
+  // vars1: the entries of z
+  // vars2: the entries of z'
+  d := #vars1;
+  assert #vars2 eq d;
+  P := PolynomialRing(Universe(vars1));
+  pol1 := &*[P.1 - v : v in vars1]; // polynomial on the left (without "- p")
+  pol2 := &+[(vars2[k] - vars1[k])*&*[P.1 - vars1[j] : j in [1..d] | j ne k]
+              : k in [1..d]]; // polynomial on the right
+  return [Coefficient(pol1, j) - Coefficient(pol, j) - Coefficient(pol2, j) : j in [0..d-1]];
+end function;
+
+// The map to the (w_2, w_3)-plane.
+qmap := func<t, z1, z2 | [-z1^2 - z1*z2 - z2^2 - 1, -z1*z2*(z1+z2) + t]>;
+
+// The projective plane, ambient space for the curve of characteristic
+// polynomials.
+Pr2<c0,c1,c2> := ProjectiveSpace(Rationals(), 2);
+
+// The affine space in coordinates t, w_2, w_3
+A3<t,w2,w3> := AffineSpace(Rationals(), 3);
+
+// Implementation of Lemma 5.2 with l = positive real axis.
+function check_not_attractive(pol, N)
+  // pol: polynomial in 2 variables (= P in Lemma 5.2)
+  // N: as in Lemma 5.2
+  B := &+[Abs(c) : c in Coefficients(Derivative(pol, 1))]
+        + &+[Abs(c) : c in Coefficients(Derivative(pol, 2))];
+  C := ComplexField();
+  // distance from the positive real axis
+  dist := func<z | Real(z) ge 0 select Abs(Imaginary(z)) else Abs(z)>;
+  points := [Exp(2*Pi(C)*C.1*j/N) : j in [0..N-1]];
+  mindist := Min([dist(Evaluate(pol, [points[j], points[k]])) : j, k in [1..N]]);
+  return mindist gt Pi(RealField())*B/N;
+end function;
+
+// Points of order 2.
+printf "Points of order 2\n\n";
+printf "  Setting up scheme P_3(2) (without cycles fixing a coordinate)\n";
+A<tt,z11,z12,z21,z22> := AffineSpace(Rationals(), 5);
+pol := Polynomial([tt, 1, 0, 1]); // Z^3 + Z + tt
+vec1 := [z11, z12, -z11-z12]; // vector z^0
+vec2 := [z21, z22, -z21-z22]; // vector z^1
+P32 := Scheme(A, eqns(pol, vec1, vec2) cat eqns(pol, vec2, vec1));
+// Remove components where one coordinate is fixed.
+P32 := Complement(P32, Scheme(A, z11-z21));
+P32 := Complement(P32, Scheme(A, z12-z22));
+P32 := Complement(P32, Scheme(A, -z11-z12-(-z21-z22)));
+assert IsIrreducible(P32);
+printf "  The scheme is irreducible";
+assert Dimension(P32) eq 1 and not IsSingular(P32);
+printf " and a smooth curve";
+assert Genus(Curve(P32)) eq 0;
+printf " of genus 0.\n";
+// Find degree over the t-line.
+printf "  It maps to the t-line with degree %o.\n", Degree(Scheme(P32, tt-1));
+
+// Map to (t, w_2, w_3)-coordinates.
+P32w := Image(map<P32 -> A3 | [tt] cat qmap(tt, z11, z12)>);
+printf "  The image in (t, w2, w3)-space is given by\n";
+for b in MinimalBasis(P32w) do
+  printf "    %o = 0\n", b;
+end for;
+
+// Map to characteristic polynomial.
+multmat := Evaluate(jaciter, [tt, z21, z22])*Evaluate(jaciter, [tt, z11, z12]);
+charp := Image(map<P32 -> Pr2 | Coefficients(CharacteristicPolynomial(multmat))>);
+printf "  The curve of characteristic polynomials is given by\n";
+printf "    %o = 0\n", Evaluate(MinimalBasis(charp)[1], [c0, c1, 1]);
+
+printf "\n----------------------------------------------------------------\n\n";
+
+// Points of order 3.
+printf "Points of order 3\n\n";
+
+printf "First look at 3-cycles of rotation type.\n\n";
+
+printf "  Setting up scheme P_3(3, rot)\n";
+A<tt,z11,z12> := AffineSpace(Rationals(), 3);
+pol := Polynomial([tt, 1, 0, 1]); // Z^3 + Z + tt
+vec1 := [z11, z12, -z11-z12]; // vector z^0
+vec2 := [z12, -z11-z12, z11]; // vector z^1 (= z^0, rotated)
+P33r := Scheme(A, eqns(pol, vec1, vec2));
+assert IsIrreducible(P33r);
+printf "  The scheme is irreducible";
+assert Dimension(P33r) eq 1 and not IsSingular(P33r);
+printf " and a smooth curve";
+assert Genus(Curve(P33r)) eq 0;
+printf " of genus 0.\n";
+// Find degree over the t-line.
+printf "  It maps to the t-line with degree %o.\n", Degree(Scheme(P33r, tt-1));
+// There is also another component associated with the reverse rotation.
+
+// Map to (t, w_2, w_3)-coordinates.
+P33rw := Image(map<P33r -> A3 | [tt] cat qmap(tt, z11, z12)>);
+printf "  The image in (t, w2, w3)-space is given by\n";
+for b in MinimalBasis(P33rw) do
+  printf "    %o = 0\n", b;
+end for;
+
+// Map to characteristic polynomial.
+multmat := Evaluate(jaciter2, [tt, z11, z12]);
+charp := Image(map<P33rw -> Pr2 | Coefficients(CharacteristicPolynomial(multmat))>);
+printf "  The curve of characteristic polynomials is given by\n";
+printf "    %o = 0\n", Evaluate(MinimalBasis(charp)[1], [c0, c1, 1]);
+
+printf "\nNow consider general 3-cycles.\n\n";
+
+printf "  Setting up scheme P_3(3, gen) (without cycles fixing a coordinate)\n";
+A<tt,z11,z12,z21,z22,z31,z32> := AffineSpace(Rationals(), 7);
+pol := Polynomial([tt, 1, 0, 1]); // Z^3 + Z + tt
+vec1 := [z11, z12, -z11-z12]; // vector z^0
+vec2 := [z21, z22, -z21-z22]; // vector z^1
+vec3 := [z31, z32, -z31-z32]; // vector z^2
+P33 := Scheme(A, eqns(pol, vec1, vec2) cat eqns(pol, vec2, vec3) cat eqns(pol, vec3, vec1));
+// Remove components where one coordinate is fixed.
+P33 := Complement(P33, Scheme(A, z11-z21));
+P33 := Complement(P33, Scheme(A, z12-z22));
+P33 := Complement(P33, Scheme(A, -z11-z12-(-z21-z22)));
+// Remove cycles of rotation type
+P33 := Complement(P33, Scheme(A, [z11-z22, z12+z21+z22]));
+P33 := Complement(P33, Scheme(A, [z11+z21+z22, z12-z21]));
+// Project to (z31, z32)-plane.
+printf "  Projecting to one point in the cycle (may take a few minutes)...\n";
+time IE := EliminationIdeal(Ideal(P33), {z31, z32});
+assert #Basis(IE) eq 1;
+fact := Factorization(Basis(IE)[1]);
+assert #fact eq 2 and forall{e : e in fact | e[2] eq 1 and Degree(e[1]) eq 24};
+assert Evaluate(fact[1,1], [0,0,0,0,0,z32,z31]) eq fact[2,1];
+printf "  The resulting curve splits into two components\n";
+printf "    that are swapped by a transposition.\n";
+extra := fact[1,1];
+printf "  Using one component (and its images for the other points)\n";
+printf "    to isolate one component of P_3(3, gen).\n";
+P33a := Scheme(P33, [extra, Evaluate(extra, [0,0,0,0,0,z11,z12]), Evaluate(extra, [0,0,0,0,0,z21,z22])]);
+time deg := Degree(Scheme(P33a, tt-1));
+printf "  It maps to the t-line with degree %o.\n", deg;
+
+printf "  Setting up equation of degree 12 for characteristic polynomials.\n";
+// Define polynomial defining the curve of characteristic polynomials for P_3(3, gen).
+pol3 :=
+    15342211025836*c0^12 + 1070154631486232*c0^11*c1 + 27523837054047230*c0^10*c1^2
+    + 347524597608124598*c0^9*c1^3 + 2365898391493431435*c0^8*c1^4 +
+    8950498749267692232*c0^7*c1^5 + 18779070917730266744*c0^6*c1^6 +
+    18882687734036018450*c0^5*c1^7 + 1983510090285549659*c0^4*c1^8 -
+    7946153216186216688*c0^3*c1^9 - 263489452702491600*c0^2*c1^10 +
+    330439941739764864*c0*c1^11 + 22991924121412608*c1^12 +
+    17275926290690772*c0^11*c2 + 704631755126620080*c0^10*c1*c2 +
+    10659621442114041106*c0^9*c1^2*c2 + 74490610626533805088*c0^8*c1^3*c2 +
+    238770191296304981431*c0^7*c1^4*c2 + 300144226543242845146*c0^6*c1^5*c2 -
+    153017750285205707112*c0^5*c1^6*c2 - 763274045808358778700*c0^4*c1^7*c2 -
+    302240786069992226445*c0^3*c1^8*c2 + 460850238259956285786*c0^2*c1^9*c2 -
+    15154549647612885648*c0*c1^10*c2 - 29567772161867767968*c1^11*c2 +
+    1574182027607643622*c0^10*c2^2 + 24746187768471804030*c0^9*c1*c2^2 -
+    60888454643631108842*c0^8*c1^2*c2^2 - 3063940040568796146718*c0^7*c1^3*c2^2
+    - 15437301810596803720088*c0^6*c1^4*c2^2 -
+    28162973587140845593937*c0^5*c1^5*c2^2 -
+    14078851973548224568189*c0^4*c1^6*c2^2 +
+    21090642031107968633424*c0^3*c1^7*c2^2 +
+    21482953253380793296098*c0^2*c1^8*c2^2 -
+    10101273152137147893987*c0*c1^9*c2^2 + 200888679820846868019*c1^10*c2^2 -
+    243938273631466366886*c0^9*c2^3 - 5667782920391178086312*c0^8*c1*c2^3 -
+    53147028399807250325882*c0^7*c1^2*c2^3 -
+    119323280515105455602382*c0^6*c1^3*c2^3 +
+    185312712429475708531862*c0^5*c1^4*c2^3 +
+    783265078919588942763291*c0^4*c1^5*c2^3 +
+    655127437294781407557176*c0^3*c1^6*c2^3 -
+    178319671212212292484968*c0^2*c1^7*c2^3 -
+    439467222361375858041990*c0*c1^8*c2^3 + 150944107465812109564899*c1^9*c2^3 -
+    6104905962012508180137*c0^8*c2^4 + 4403666766530402099946*c0^7*c1*c2^4 +
+    1726940498599150045870090*c0^6*c1^2*c2^4 +
+    8073600923183585075066544*c0^5*c1^3*c2^4 +
+    5326881601511705828738963*c0^4*c1^4*c2^4 -
+    11599224365349261559605340*c0^3*c1^5*c2^4 -
+    13293837293129573025170478*c0^2*c1^6*c2^4 -
+    659505795206373291312252*c0*c1^7*c2^4 + 4846216743813910719547899*c1^8*c2^4
+    + 805451740924971329803223*c0^7*c2^5 +
+    12664976630578164814302924*c0^6*c1*c2^5 +
+    12186919152263017716673636*c0^5*c1^2*c2^5 -
+    174488739389868508276425642*c0^4*c1^3*c2^5 -
+    236568076566537369223366790*c0^3*c1^4*c2^5 +
+    75939485459037766260343112*c0^2*c1^5*c2^5 +
+    146080563105475815975865224*c0*c1^6*c2^5 +
+    20821769865583444409396148*c1^7*c2^5 + 970764880699367383638446*c0^6*c2^6 -
+    361336445102416021246919113*c0^5*c1*c2^6 -
+    1643143617711767824487600383*c0^4*c1^2*c2^6 +
+    1571874104515496773698884312*c0^3*c1^3*c2^6 +
+    4042461513736954449963447938*c0^2*c1^4*c2^6 +
+    83647514455355759918285574*c0*c1^5*c2^6 -
+    847909226515577943447954594*c1^6*c2^6 -
+    1094809209596109089461004010*c0^5*c2^7 +
+    138697513147677038981288643*c0^4*c1*c2^7 +
+    40036721705021718291545324808*c0^3*c1^2*c2^7 +
+    2793576847505576368243392320*c0^2*c1^3*c2^7 -
+    36629459522819928852911200964*c0*c1^4*c2^7 -
+    3833674594364076038804573550*c1^5*c2^7 +
+    22823164020951971205401667958*c0^4*c2^8 +
+    171515889327312505317302250084*c0^3*c1*c2^8 -
+    503287869092006359797042609618*c0^2*c1^2*c2^8 -
+    171995962776036261522595834508*c0*c1^3*c2^8 +
+    153439768691822403458327345910*c1^4*c2^8 +
+    62084167431408989427913785875*c0^3*c2^9 -
+    3774913306453202169174270643770*c0^2*c1*c2^9 +
+    3532806670880025418427038424472*c0*c1^2*c2^9 +
+    1083083208762406913345606533972*c1^3*c2^9 -
+    7598914498664650687588757848404*c0^2*c2^10 +
+    36678662223691087960530026614245*c0*c1*c2^10 -
+    11565063771540153895556686385073*c1^2*c2^10 +
+    97454488763578758816919781410362*c0*c2^11 -
+    146462333649217294608070114647645*c1*c2^11 -
+    425354369909492568296815592905809*c2^12;
+
+// Verify parameterization.
+L<t0,t1> := ProjectiveSpace(Rationals(), 1);
+
+para := [-9*t0^12 - 162*t0^11*t1 - 693*t0^10*t1^2 + 1434*t0^9*t1^3 + 11958*t0^8*t1^4
+              - 32202*t0^7*t1^5 - 182301*t0^6*t1^6 + 578742*t0^5*t1^7 +
+              2069910*t0^4*t1^8 - 919718*t0^3*t1^9 - 3065685*t0^2*t1^10 +
+              892254*t0*t1^11 + 264295*t1^12,
+          t0^12 + 26*t0^11*t1 + 230*t0^10*t1^2 + 693*t0^9*t1^3 - 3867*t0^8*t1^4 -
+              5844*t0^7*t1^5 + 123074*t0^6*t1^6 - 38381*t0^5*t1^7 - 1320149*t0^4*t1^8
+              + 420552*t0^3*t1^9 + 4310940*t0^2*t1^10 - 4206447*t0*t1^11 +
+              1442574*t1^12,
+          -9*t0^10*t1^2 - 63*t0^9*t1^3 + 301*t0^8*t1^4 + 1126*t0^7*t1^5 -
+              7693*t0^6*t1^6 - 3641*t0^5*t1^7 + 52375*t0^4*t1^8 + 13526*t0^3*t1^9 -
+              104463*t0^2*t1^10 - 47919*t0*t1^11 + 20987*t1^12];
+assert Evaluate(pol3, para) eq 0;
+printf "  Rational parameterization is verified.\n";
+
+printf "  Setting up map to characteristic polynomial.\n";
+jac1 := Evaluate(jaciter, [tt, z11, z12]);
+jac2 := Evaluate(jaciter, [tt, z21, z22]);
+jac3 := Evaluate(jaciter, [tt, z31, z32]);
+multmat := jac3*jac2*jac1;
+charpmap := map<P33 -> Pr2 | Coefficients(CharacteristicPolynomial(multmat))>;
+
+printf "  Check that P_3(3, gen) maps to the given curve:\n";
+printf "    Computing Groebner basis (may take a few minutes)...\n";
+time GB := GroebnerBasis(P33a);
+printf "    Setting up generic point...\n";
+A2 := AffineSpace(Rationals(), 2);
+FC := FunctionField(Curve(A2, Evaluate(extra, [0,0,0,0,0,A2.1,A2.2])));
+pt := [0,0,0,0,0,FC.1,FC.2];
+for j := 5 to 1 by -1 do
+  // find last GB element involving j-th variable
+  m := Max([i : i in [1..#GB] | Degree(GB[i], j) gt 0]);
+  assert Degree(GB[m], j) eq 1; // make sure it is linear
+  // compute coordinate
+  pt[j] := -Evaluate(Coefficient(GB[m],j,0), pt)/Evaluate(Coefficient(GB[m],j,1), pt);
+end for;
+time assert forall{b : b in GB | Evaluate(b, pt) eq 0}; // about 20 seconds
+printf "    Verifying that image of generic point is on the curve\n";
+printf "      (may take a few more minutes)...\n";
+time jac1pt := Evaluate(jac1, pt); // about 4 minutes
+time jac2pt := Evaluate(jac2, pt); // about 4 minutes
+time jac3pt := Evaluate(jac3, pt); // fast
+time chp := CharacteristicPolynomial(jac3pt*(jac2pt*jac1pt)); // about 20 seconds
+time assert Evaluate(pol3, Coefficients(chp)) eq 0; // about 15 minutes
+printf "      ... successful!\n\n";
+
+printf "  Checking that no attractive cycles are possible\n";
+polev := Evaluate(pol3, [P2.1*P2.2, -P2.1-P2.2, 1]) where P2 := PolynomialRing(Rationals(), 2);
+assert check_not_attractive(polev, 18);
+
+printf "\n----------------------------------------------------------------\n\n";
+
+// Points of order 4.
+printf "Points of order 4\n\n";
+
+printf "We consider 4-cycles of transposition type.\n\n";
+
+printf "  Setting up scheme P_3(4, tr) (without cycles fixing a coordinate)\n";
+A<tt,z11,z12,z21,z22> := AffineSpace(Rationals(), 5);
+pol := Polynomial([tt, 1, 0, 1]); // Z^3 + Z + tt
+vec1 := [z11, z12, -z11-z12]; // vector z^0
+vec2 := [z21, z22, -z21-z22]; // vector z^1
+vec3 := [z12, z11, -z11-z12]; // vector z^2 (= z^0, with transposition)
+P34t := Scheme(A, eqns(pol, vec1, vec2) cat eqns(pol, vec2, vec3));
+// Remove components where last coordinate is fixed.
+P34t := Complement(P34t, Scheme(A, z11+z12-z21-z22));
+assert IsIrreducible(P34t);
+printf "  The scheme is irreducible";
+assert Dimension(P34t) eq 1 and not IsSingular(P34t);
+printf " and a smooth curve";
+assert Genus(Curve(P34t)) eq 1;
+printf " of genus 1.\n";
+// Find degree over the t-line.
+printf "  It maps to the t-line with degree %o.\n", Degree(Scheme(P34t, tt-1));
+
+// Map to characteristic polynomial, via (t, w2, w3).
+jac1 := Evaluate(jaciter2, [tt] cat qmap(tt, z11, z12));
+jac2 := Evaluate(jaciter2, [tt] cat qmap(tt, z21, z22));
+multmat := jac2*jac1;
+time charp := Image(map<P34t -> Pr2 | Coefficients(CharacteristicPolynomial(multmat))>);
+printf "  The curve of characteristic polynomials is given by\n";
+curve := Evaluate(MinimalBasis(charp)[1], [c0, c1, 1]);
+curve *:= LCM([Denominator(c) : c in Coefficients(curve)]);
+printf "    %o = 0\n", curve;
+C := Curve(charp);
+E := EllipticCurve(C, C![1,0,0]);
+printf "  It is an elliptic curve with Cremona label %o.\n", CremonaReference(E);
+
+printf "\n----------------------------------------------------------------\n\n";
+
+// Points of order 6.
+printf "Points of order 6\n\n";
+
+printf "We consider 6-cycles of rotation type.\n\n";
+
+printf "  Setting up scheme P_3(6, rot) (without 3-cycles)\n";
+A<tt,z11,z12,z21,z22> := AffineSpace(Rationals(), 5);
+pol := Polynomial([tt, 1, 0, 1]); // Z^3 + Z + tt
+vec1 := [z11, z12, -z11-z12]; // vector z^0
+vec2 := [z21, z22, -z21-z22]; // vector z^1
+vec3 := [z12, -z11-z12, z11]; // vector z^2 (= z^0, with rotation)
+P36r := Scheme(A, eqns(pol, vec1, vec2) cat eqns(pol, vec2, vec3));
+// Remove components that give 3-cycle of rotation type.
+P36r := Complement(P36r, Scheme(A, [z11-z22, z12+z21+z22]));
+assert IsIrreducible(P36r);
+printf "  The scheme is irreducible";
+assert Dimension(P36r) eq 1 and not IsSingular(P36r);
+printf " and a smooth curve";
+assert Genus(Curve(P36r)) eq 5;
+printf " of genus 5.\n";
+// Find degree over the t-line.
+printf "  It maps to the t-line with degree %o.\n", Degree(Scheme(P36r, tt-1));
+
+// Map to characteristic polynomial, via (t, w2, w3).
+jac1 := Evaluate(jaciter2, [tt] cat qmap(tt, z11, z12));
+jac2 := Evaluate(jaciter2, [tt] cat qmap(tt, z21, z22));
+time charp := Image(map<P36r -> Pr2 | Coefficients(CharacteristicPolynomial(multmat))>);
+printf "  The curve of characteristic polynomials is given by\n";
+pol6 := MinimalBasis(charp)[1];
+curve := Evaluate(pol6, [c0, c1, 1]);
+curve *:= LCM([Denominator(c) : c in Coefficients(curve)]);
+printf "    %o = 0\n", curve;
+
+// Verify parameterization.
+L<t0,t1> := ProjectiveSpace(Rationals(), 1);
+
+para := [ -36*t0^5 - 12*t0^4*t1 + 60*t0^3*t1^2 + 236*t0^2*t1^3 + 260*t0*t1^4 - 4*t1^5,
+          -4*t0^5 - 51*t0^4*t1 - 90*t0^3*t1^2 + 59*t0^2*t1^3 + 42*t0*t1^4 + 5*t1^5,
+          -9*t0^4*t1 - 18*t0^3*t1^2 + t0^2*t1^3 + 10*t0*t1^4 - t1^5];
+assert Evaluate(pol6, para) eq 0;
+printf "  Rational parameterization is verified.\n";
+
+printf "  Checking that no attractive cycles are possible\n";
+polev := Evaluate(pol6, [P2.1*P2.2, -P2.1-P2.2, 1]) where P2 := PolynomialRing(Rationals(), 2);
+assert check_not_attractive(-polev, 12);

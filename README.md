@@ -35,3 +35,10 @@ contains code to verify the results in Section 3.
 * [X1_p.magma](DKSS/X1_p.magma):
   this contains equations for models of $X_1(p)$ for the relevant primes $p$;
   this file is loaded by DKSS.magma.
+
+## The Weierstrass root finder is not generally convergent
+
+(With Bernhard Reinke and Dierk Schleicher; [arXiv](arxiv.org/abs/2004.04777))
+
+The file [Weierstrass-check.magma](Weierstrass/Weierstrass-check.magma)
+contains code to verify the results in Section 5.
