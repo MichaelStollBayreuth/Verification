@@ -1,0 +1,509 @@
+// An algorithm that, given polynomials c, d in Z[x]
+// with c(0), d(0) /= 0, for which N > deg c + deg d the polynomial
+// f_N = x^N c(x^-1) + d(x) is reducible.
+//
+// See Sawin, Shusterman, Stoll:
+// Irreducibility of polynomials with a large gap
+// Acta Arith. 192, 111-139 (2020).
+
+// Define Z[x]
+P<x> := PolynomialRing(Integers());
+
+
+function linear_congruence(r, s, t, bound)
+  // r, s, t are integers.
+  // Returns the sequence of all pairs <u, v> such that
+  // r*u + s*v = t  and  u^2 + v^2 <= bound
+  u0, d := Solution(r, t, Abs(s));
+  if u0 eq -1 then
+    // no solution of the congruence r*u = t mod s
+    return [];
+  else
+    // solutions are of the form (u0 + k*d, v0 - k*e)
+    v0 := ExactQuotient(t - r*u0, s);
+    e := ExactQuotient(r*d, s);
+    // so need  (d^2+e^2) k^2 + 2 (d u0 - e v0) k + u0^2+v0^2 - bound <= 0
+    de2 := d^2 + e^2;
+    disc := de2*bound - (e*u0 + d*v0)^2;
+    if disc ge 0 then
+      sqd := Isqrt(disc);
+      b := e*v0 - d*u0;
+      kup := Floor((b + sqd)/de2);
+      kdown := Ceiling((b - sqd)/de2);
+      return [<u, v, u^2+v^2> where u := u0+k*d where v :=v0-k*e : k in [kdown..kup]];
+    else
+      return [];
+    end if;
+  end if;
+end function;
+
+// The main part is to determine m_0 with the property that
+// * m_0 >= deg c + deg d
+// * if m > m_0 and a, b in Z[x]_{<m} satisfy a b = c d mod x^m,
+//   then ||a||+||b|| > ||c||+||d|| or a b = c d
+
+function find_m0_prune(c, d : MaxLevel := 1000, MaxAgendaSize := 1000)
+  // MaxLevel gives the maximal m that is considered
+  // This version prunes agenda to size MaxAgendaSize, keeping pairs of smallest weight
+  target := c*d;
+  min := Degree(target);
+  size := &+[z^2 : z in Coefficients(c) cat Coefficients(d)];
+  const := Coefficient(c, 0)*Coefficient(d, 0);
+  // all factorizations of const, modulo order and common sign change
+  cfact := [<d, ExactQuotient(const, d)> : d in Divisors(Abs(const))
+                                         | d^2 le Abs(const)];
+  agenda := {<P!e[1], P!e[2], size - e[1]^2 - e[2]^2> : e in cfact};
+  m := 1;
+  // agenda contains all pairs <a,b> with ab = cd mod x^m, ||a||+||b||<=||c||+||d||,
+  // up to a common sign change and order
+  while m lt min or exists{e : e in agenda | e[1]*e[2] ne target} do
+    if m gt MaxLevel then
+      printf "\nWARNING: find_m0: MaxLevel reached\n";
+      return m, agenda;
+    end if;
+    // find lifts
+    oldag := agenda;
+    agenda := {Universe(agenda)|};
+    ct := Coefficient(target, m);
+    for entry in oldag do
+      a, b, s := Explode(entry);
+      a0 := Coefficient(a, 0); b0 := Coefficient(b, 0);
+      cof := Coefficient(a*b, m);
+      cands := linear_congruence(b0, a0, ct-cof, s);
+      if a eq b then
+        // break symmetry
+        cands := [e : e in cands | e[1] le e[2]];
+      end if;
+      agenda join:= {<a + e[1]*x^m, b + e[2]*x^m, s-e[1]^2-e[2]^2> : e in cands};
+    end for;
+    vprintf User1: "m = %3o --> #agenda = %7o, max_rem = %6o\n",
+                   m, #agenda, Max({0} join {e[3] : e in agenda});
+    m +:= 1;
+//     assert forall{e : e in agenda | (e[1]*e[2]) mod x^m eq target mod x^m};
+    agenda := Set(Sort(Setseq(agenda), func<x,y | y[3]-x[3]>)[1..Min(MaxAgendaSize, #agenda)]);
+  end while;
+  return m-1, agenda;
+end function;
+
+function test_extends(m, mata, matb, s, h, bound)
+  // Compute lower bound for additional weight when extending <a, b> (in T_m)
+  //   to T_m', where m' = min{2m, bound}.
+  // Returns false when this lower bound exceeds bound, otherwise true.
+  // * s is the remaining weight possible
+  // * we have a*b = target + h*x^m; we assume that  deg(target) < m.
+  // * mata, matb are the matrices corresponding to multiplication by a, b mod x^m.
+  if bound lt 2*m then
+    m := bound - m;
+    if m le 0 then return true; end if; // no condition
+    // restrict to relvant part of matrices
+    mata := Submatrix(mata, 1, 1, m, m);
+    matb := Submatrix(matb, 1, 1, m, m);
+  end if;
+  hv := KSpace(Rationals(), m)!0;
+  for i := 0 to m-1 do
+    hv[i+1] := Coefficient(h, i);
+  end for;
+  // Compute lower bound for additional weight.
+  // This is given by the squared norm of
+  // hv * (Transpose(mat)*mat)^-1 * Transpose(mat)
+  // where mat is mata atop matb
+  tmata := Transpose(mata);
+  tmatb := Transpose(matb);
+  v := Solution(tmata*mata + tmatb*matb, hv);
+  bd := Norm(v * tmata) + Norm(v * tmatb);
+  return bd le s;
+end function;
+
+// This version uses find_m0_prune to get an estimate
+// and then uses the estimate to prune the tree.
+function find_m0(c, d : MaxLevel := 1000, MaxAgendaSize := 100, MaxPairs := false)
+  // First get a lower bound
+  vprintf User1: "find_m0: get lower bound on m0 by pruning the tree...\n";
+  lower := find_m0_prune(c, d : MaxLevel := MaxLevel, MaxAgendaSize := MaxAgendaSize);
+  vprintf User1: "\nfind_m0: lower bound is %o\n\n", lower;
+  if MaxPairs then lower -:= 1; end if;
+  // MaxLevel gives the maximal m that is considered
+  target := c*d;
+  min := Degree(target);
+  size := &+[z^2 : z in Coefficients(c) cat Coefficients(d)];
+  const := Coefficient(c, 0)*Coefficient(d, 0);
+  // all factorizations of const, modulo order and common sign change
+  cfact := [<d, ExactQuotient(const, d)> : d in Divisors(Abs(const))
+                                         | d^2 le Abs(const)];
+  agenda := {<P!e[1], P!e[2], size - e[1]^2 - e[2]^2> : e in cfact};
+  // agenda contains all pairs <a,b> with ab = cd mod x^m, ||a||+||b||<=||c||+||d||,
+  // up to a common sign change and order
+  for m := 1 to min do
+    // expand everything until we reach degree of target
+    oldag := agenda;
+    agenda := {Universe(agenda)|};
+    ct := Coefficient(target, m);
+    for entry in oldag do
+      a, b, s := Explode(entry);
+      a0 := Coefficient(a, 0); b0 := Coefficient(b, 0);
+      cof := Coefficient(a*b, m);
+      cands := linear_congruence(b0, a0, ct-cof, s);
+      if a eq b then
+        // break symmetry
+        cands := [e : e in cands | e[1] le e[2]];
+      end if;
+      agenda join:= {<a + e[1]*x^m, b + e[2]*x^m, s-e[1]^2-e[2]^2> : e in cands};
+    end for;
+    vprintf User1: "m = %3o --> #agenda = %7o,                               max_rem = %6o\n",
+                   m, #agenda, Max({0} join {e[3] : e in agenda});
+  end for;
+  // add matrices to agenda entries: <a, b, s, mata, matb>
+  M := ZeroMatrix(Rationals(), min+1, min+1);
+  for i := 1 to min do M[i,i+1] := 1; end for;
+  agenda := {<e[1], e[2], e[3], Evaluate(e[1], M), Evaluate(e[2], M)> : e in agenda};
+  for m := min+1 to lower do
+    // use lower bound and test_extends to prune the tree
+    oldag := agenda;
+    agenda := {};
+    prune_count := 0;
+    for entry in oldag do
+      a, b, s, mata, matb := Explode(entry);
+      ab := a*b;
+      h := ExactQuotient(ab - target, x^m);
+      if test_extends(m, mata, matb, s, h, lower) then
+        // entry could possibly survive, so find extensions
+        a0 := Coefficient(a, 0); b0 := Coefficient(b, 0);
+        cof := Coefficient(ab, m);
+        cands := linear_congruence(b0, a0, -cof, s);
+        if a eq b then
+          // break symmetry
+          cands := [e : e in cands | e[1] le e[2]];
+        end if;
+        // extend matrices
+        m1 := m+1;
+        matanew := ZeroMatrix(Rationals(), m1, m1);
+        matbnew := ZeroMatrix(Rationals(), m1, m1);
+        InsertBlock(~matanew, mata, 2, 2);
+        InsertBlock(~matbnew, matb, 2, 2);
+        InsertBlock(~matanew, Submatrix(mata, 1, 1, 1, m), 1, 1);
+        InsertBlock(~matbnew, Submatrix(matb, 1, 1, 1, m), 1, 1);
+        for e in cands do
+          matanew[1,m1] := e[1];
+          matbnew[1,m1] := e[2];
+          Include(~agenda, <a + e[1]*x^m, b + e[2]*x^m, s-e[1]^2-e[2]^2, matanew, matbnew>);
+        end for;
+      else
+        // item could be excluded
+        prune_count +:= 1;
+      end if;
+    end for;
+    vprintf User1: "m = %3o --> #agenda = %7o, %7o pruned, %7o left, max_rem = %6o\n",
+                   m, #agenda, prune_count, #oldag - prune_count, Max({0} join {e[3] : e in agenda});
+  end for;
+  m := Max(min, lower) + 1;
+  while exists{e : e in agenda | e[1]*e[2] ne target} do
+    // the remaining steps until m0 is reached
+    oldag := agenda;
+    agenda := {};
+    for entry in oldag do
+      a, b, s := Explode(entry);
+      a0 := Coefficient(a, 0); b0 := Coefficient(b, 0);
+      cof := Coefficient(a*b, m);
+      cands := linear_congruence(b0, a0, -cof, s);
+      if a eq b then
+        // break symmetry
+        cands := [e : e in cands | e[1] le e[2]];
+      end if;
+      agenda join:= {<a + e[1]*x^m, b + e[2]*x^m, s-e[1]^2-e[2]^2> : e in cands};
+    end for;
+    vprintf User1: "m = %3o --> #agenda = %7o,                               max_rem = %6o\n",
+                   m, #agenda, Max({0} join {e[3] : e in agenda});
+    m +:= 1;
+    if m gt MaxLevel then
+      printf "\nWARNING: find_m0: MaxLevel reached\n";
+      return m, agenda;
+    end if;
+  end while;
+  return m-1, MaxPairs select {<e[1], e[2], e[3]> : e in oldag}
+                       else {<e[1], e[2], e[3]> : e in agenda};
+end function;
+
+// Best-first and prune variant
+function find_m0_bf(c, d : MaxLevel := 1000, InitialBound := 1)
+  // MaxLevel gives the maximal m that is considered
+  target := c*d;
+  min := Degree(target);
+  size := &+[z^2 : z in Coefficients(c) cat Coefficients(d)];
+  const := Coefficient(c, 0)*Coefficient(d, 0);
+  // all factorizations of const, modulo order and common sign change
+  cfact := [<d, ExactQuotient(const, d)> : d in Divisors(Abs(const))
+                                         | d^2 le Abs(const)];
+  agenda := [<P!e[1], P!e[2], size - e[1]^2 - e[2]^2> : e in cfact];
+  Sort(~agenda, func<x,y | y[3]-x[3]>); // largest remaining size first
+  // recursive working horse
+  function find_m0_rec(a0, b0, a, b, mata, matb, s, m, bound)
+    if m gt MaxLevel then
+      printf "\nWARNING: find_m0: MaxLevel reached\n";
+      return m, {};
+    end if;
+    // returns best lower bound found and set of entries at that level
+    // (bound is the bound provided and set is empty when no better bound can be obtained)
+//     vprintf User1: " "^m*"rec: a = %o, b = %o, s = %o, bound = %o\n", a, b, s, bound;
+    ab := a*b;
+    h := ExactQuotient(ab - target, x^m);
+    result := {};
+    if h eq 0 and s le 1 then
+      // pair has stabilized
+      return m, {<a, b, s>};
+    elif test_extends(m, mata, matb, s, h, bound) then
+      ct := Coefficient(target, m);
+      cof := Coefficient(ab, m);
+      cands := linear_congruence(b0, a0, ct-cof, s);
+      if IsEmpty(cands) then
+        // pair does not extend to level m+1
+        return Max(m, bound), {};
+      else
+        if a eq b then
+          // break symmetry
+          cands := [e : e in cands | e[1] le e[2]];
+        end if;
+        // sort candidate pairs by increasing weight
+        cands := Sort(cands, func<x,y | x[3]-y[3]>);
+        // extend matrices
+        m1 := m+1;
+        matanew := ZeroMatrix(Rationals(), m1, m1);
+        matbnew := ZeroMatrix(Rationals(), m1, m1);
+        InsertBlock(~matanew, mata, 2, 2);
+        InsertBlock(~matbnew, matb, 2, 2);
+        InsertBlock(~matanew, Submatrix(mata, 1, 1, 1, m), 1, 1);
+        InsertBlock(~matbnew, Submatrix(matb, 1, 1, 1, m), 1, 1);
+        // and call find_m0_rec recursively
+        for e in cands do
+          mata1 := matanew;
+          matanew[1,m1] := e[1];
+          matb1 := matbnew;
+          matbnew[1,m1] := e[2];
+          newb, set := find_m0_rec(a0, b0, a + e[1]*x^m, b + e[2]*x^m,
+                                   matanew, matbnew, s - e[3], m1, Max(m1, bound));
+          result join:= set;
+          if newb gt bound then
+            if m le 5 then vprintf User1: " "^m*"rec: new lower bound %o\n", newb; end if;
+            bound := newb;
+          end if;
+        end for;
+      end if;
+    end if;
+    return bound, result;
+  end function;
+  bound := InitialBound;
+  result := {};
+  for e in agenda do
+    a, b, s := Explode(e);
+    a0 := Coefficient(a, 0);
+    b0 := Coefficient(b, 0);
+    m, set := find_m0_rec(a0, b0, a, b, Matrix(Rationals(), 1, 1, [a0]), Matrix(Rationals(), 1, 1, [b0]),
+                          s, 1, bound);
+    result join:= set;
+    if m gt bound then
+      vprintf User1: "new lower bound %o\n", m;
+      bound := m;
+    end if;
+  end for;
+  return bound, result;
+end function;
+
+// When the size of the intermediate tree levels does not get too
+// large (say, stays below a few hundred thousand), then
+//   find_m0(c, d : MaxAgendaSze := 0)
+// seems to be fastest (this essentially eliminates pruning).
+// When the tree gets large,
+//   find_m0(c, d) and find_m0_bf(c, d)
+// are faster and roughly equally fast, but
+//   find_m0_bf(c, d)
+// needs only a small fraction of the memory that find_m0 needs.
+
+// Here is a table (YMMV) with timigs (in seconds) for (c, d) = (1, -n*x^2 + 1)
+//
+// n                   |  10  |  11  |  12  |  13  |  14  |   15  |   17  |             18             |
+// --------------------+------+------+------+------+------+-------+-------+----------------------------+
+// find_m0 w/o pruning |  0.5 |  3.1 |  5.8 | 21.9 | 28.7 |  63.6 | 543.8 | 8116.4 ( > 14 GB memory)   |
+// find_m0             |  2.6 |  7.4 | 13.1 | 38.1 | 69.9 | 134.3 | 489.1 | 4467.0 (~ 2.5 GB memory)   |
+// find_m0_bf          |  2.4 |  7.6 | 13.1 | 40.3 | 69.9 | 132.4 | 476.9 | 4498.0 (memory negligible) |
+// --------------------+------+------+------+------+------+-------+-------+----------------------------+
+
+// Doing this in Magma induces a lot of overhead,
+// so an implementation in a low-level language like C
+// is likely to be considerably faster.
+
+//=======================================================================
+// Functions related to testing irreducibility of x^N *c(x^-1) + d(x)
+//=======================================================================
+
+function IsCyclotomicPolynomial(p)
+  if Degree(p) eq 0 then return false, _; end if;
+  assert GCD(Coefficients(p)) eq 1;
+  if LeadingCoefficient(p) ne 1 then return false, _; end if;
+  if p eq x-1 then return true, 1; end if;
+  if Coefficient(p, 0) ne 1 then return false, _; end if;
+  nl := EulerPhiInverse(Degree(p));
+  for n in nl do
+    if p eq CyclotomicPolynomial(n) then return true, n; end if;
+  end for;
+  return false, _;
+end function;
+
+function polynomial_divisors(pol)
+  // returns a sequence containing all divisors of pol in Z[x]
+  function pdhelp(remfact)
+    if IsEmpty(remfact) then
+      return [Parent(pol)!1];
+    else
+      e := remfact[1];
+      aseq := [e[1]^k : k in [0..e[2]]];
+      remdiv := pdhelp(remfact[2..#remfact]);
+      return [a*d : a in aseq, d in remdiv];
+    end if;
+  end function;
+  return pdhelp(Factorization(pol));
+end function;
+
+function seqs(w, l)
+  // returns a sequence consisting of all length l sequences of integers
+  // whose squares sum to w
+  if l eq 0 then return w eq 0 select [[]] else []; end if;
+  return &cat[[Append(s, a) : s in seqs(w-a^2, l-1)] : a in [-Isqrt(w)..Isqrt(w)]];
+end function;
+
+function is_robust(c, d)
+  // determine if the pair (c, d) is robust
+  if Coefficient(c, 0) eq 0 or Coefficient(d, 0) eq 0 then return false; end if;
+  if Coefficient(c, 0) lt 0 then c := -c; end if;
+  if Coefficient(d, 0) lt 0 then d := -d; end if;
+  cd := c*d;
+  deg := Max(Degree(c), Degree(d));
+  P := Parent(cd);
+  rev := func<pol | P![Coefficient(pol, deg - j) : j in [0..deg]]>;
+  sum := c*rev(c) + d*rev(d);
+  poldiv := [Coefficient(f, 0) lt 0 select -f else f : f in polynomial_divisors(cd)];
+  poldiv := [<f, g> : f in poldiv | Coefficients(f) le Coefficients(g) where g := ExactQuotient(cd, f)];
+  cdweight := Coefficient(sum, deg);
+  rem := {<e[1], e[2], delta> : e in poldiv
+                              | delta ge 0
+                                where delta := cdweight - &+[z^2 : z in Coefficients(e[1])
+                                                                          cat Coefficients(e[2])]};
+  rem := {e : e in rem | {e[1], e[2]} ne {c, d}};
+  if exists{e : e in rem | e[3] ge 2} then return false; end if;
+  // check condition on a(x)a(x^-1) + b(x)b(x^-1)
+  if exists{e : e in rem | e[1]*rev(e[1]) + e[2]*rev(e[2]) eq sum} then return false; end if;
+  return not exists{e : e in rem | e[3] gt 0 and e[1] + e[2] eq 0};
+end function;
+
+// list all robust pairs (up to sign and order) of weight w and degrees deg1, deg2
+function robust_pairs(w, deg1, deg2)
+  s := seqs(w, deg1+deg2+2);
+  result := [];
+  for seq in s do
+    c := P!(seq[1..deg1+1]); d := P!(seq[deg1+2..deg1+deg2+2]);
+    if Degree(c) eq deg1 and Degree(d) eq deg2 and Coefficients(c) le Coefficients(d)
+         and Coefficient(c, 0) gt 0 and Coefficient(d, 0) gt 0 and is_robust(c, d)
+    then
+      Append(~result, <c, d>);
+    end if;
+  end for;
+  return result;
+end function;
+
+function irreducibility(c, d : m0 := 0, MaxLevel := 1000, MaxAgendaSize := 1000)
+  crev := P!Reverse(Coefficients(c));
+  drev := P!Reverse(Coefficients(d));
+  if c*crev eq d*drev then
+    error "c(x)c(x^-1) must be different from d(x)d(x^-1)";
+  end if;
+  if Degree(GCD(crev, d)) gt 0 then
+    error "x^(deg c) c(x^-1) and d must be coprime";
+  end if;
+  if Degree(c) gt Degree(d) then
+    printf "irreducibility: exchanging c and d to make deg c <= deg d\n";
+    t := d; d := c; c := t;
+    t := drev; drev := crev; crev := t;
+  end if;
+  r := d*drev - x^(Degree(d)-Degree(c))*c*crev;
+  // for large N, small factors dividing f_N must divide r
+  fr := [e[1] : e in Factorization(r) | Degree(e[1]) gt 0];
+  result := [];
+  for h in fr do
+    flag, n := IsCyclotomicPolynomial(h);
+    if flag then
+      // find the residue class mod n (if any) such that h divides f_N
+      R<z> := quo<P | h>;
+      c1 := Evaluate(c, z^(n-1)); d1 := Evaluate(d, z);
+      for k := 0 to n-1 do
+        if c1 + d1 eq 0 then
+          Append(~result, <h, n, k>);
+          break;
+        end if;
+        c1 *:= z;
+      end for;
+    elif IsDivisibleBy(crev, h) then
+      // f_N = d /= 0 mod h, so do nothing
+    else
+      // find N (if any) such that h divides f_N
+      rts := [e[1] : e in Roots(h, ComplexField())];
+      rt := rts[pos] where _, pos := Max([Modulus(z) : z in rts]);
+      mrt := Modulus(rt);
+      if mrt gt 1.1 then
+        rhs := Evaluate(d, rt)/Evaluate(c, 1/rt);
+        nn := Round(Log(mrt)/Log(Modulus(rhs)));
+      else
+        K<z> := NumberField(h);
+        rhs := Evaluate(d, z)/Evaluate(c, 1/z);
+        hrhs := WeilHeight(rhs);
+        if hrhs eq 0 then
+          nn := 0; // z is not a root of unity ot zero, so z^n /= rhs for all n
+        else
+          nn := Round(WeilHeight(z)/WeilHeight(rhs));
+        end if;
+      end if;
+      if nn gt Degree(c) + Degree(d) and IsDivisibleBy(x^(nn-Degree(c))*crev + d, h) then
+        Append(~result, <h, 0, nn>);
+      end if;
+    end if;
+  end for;
+  // now determine m0
+  if m0 eq 0 then
+    m0, rem := find_m0(c, d : MaxLevel := MaxLevel, MaxAgendaSize := MaxAgendaSize);
+    vprintf User1: "\nirreducibility: m_0 = %o\n", m0;
+  else
+    // use given m0
+    vprintf User1: "\nirreducibility: use m_0 = %o as provided\n", m0;
+    cd := c*d;
+    poldiv := polynomial_divisors(cd);
+    poldiv := [<f, g> : f in poldiv | f le g where g := ExactQuotient(cd, f)];
+    cdweight := &+[z^2 : z in Coefficients(c) cat Coefficients(d)];
+    rem := {<e[1], e[2], delta> : e in poldiv
+                                | delta ge 0
+                                  where delta := cdweight - &+[z^2 : z in Coefficients(e[1])
+                                                                            cat Coefficients(e[2])]};
+  end if;
+  if forall{e : e in rem | e[3] eq 0} then
+    N0 := 2*m0;
+  else
+    rem1 := {e : e in rem | e[3] gt 0};
+    if exists{e : e in rem1 | e[1] + e[2] eq 0
+                              and 2*e[1]*P!Reverse(Coefficients(e[1])) + e[3]^2*x^Degree(e[1])
+                                    eq c*crev*x^(Degree(d)-Degree(c)) + d*drev}
+    then
+      error "factorization condition is violated";
+    end if;
+    N0 := Max(2*m0, 4*(Degree(c) + Degree(d)));
+  end if;
+  for N := Degree(c) + Degree(d) + 1 to N0 do
+    fact := Factorization(x^(N-Degree(c))*crev + d);
+    fact1 := {*e[1]^^e[2] : e in fact*};
+    if #fact1 gt 1 then
+      for j := 1 to #fact eq 1 select 1 else #fact-1 do
+        h := fact[j,1];
+        if forall{e : e in result | e[1] ne h or e[2] eq 0 or not IsDivisibleBy(N - e[3], e[2])} then
+          Append(~result, <h, 0, N>);
+        end if;
+      end for;
+    end if;
+  end for;
+  return result;
+end function;
+

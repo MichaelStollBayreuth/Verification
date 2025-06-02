@@ -42,3 +42,11 @@ contains code to verify the results in Section 3.
 
 The file [Weierstrass-check.magma](Weierstrass/Weierstrass-check.magma)
 contains code to verify the results in Section 5.
+
+## Irreducibility of polynomials with a large gap
+
+(With Will Sawin and Mark Shusterman; [arXiv](arxiv.org/abs/1803.10811))
+
+The file [SaShSt-polynomials.magma](SaShSt/SaShSt-polynomials.magma)
+contains Magma programs related to the paper.
+
