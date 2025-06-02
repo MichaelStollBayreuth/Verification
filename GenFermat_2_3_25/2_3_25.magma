@@ -1,0 +1,1238 @@
+/*************************************************************************
+ * Magma code for the computations verifying the claims made in the paper
+ * "The generalized Fermat equation x² + y³ = z²⁵"
+ * by Nuno Freitas and Michael Stoll
+ *
+ * May 25, 2025
+ *************************************************************************/
+
+printf "\nVerification of the computations in\n";
+printf "  \"The generalized Fermat equation x² + y³ = z²⁵\"\n";
+printf "by Nuno Freitas and Michael Stoll\n\n\n";
+
+// Section 2
+// =========
+
+printf "SECTION 2\n";
+printf "=========\n\n";
+
+// We parametrize the primitive solutions to x² + y³ + z⁵
+// following Johnny Edwards, J. reine angew. Math. 571 (2004), 213--236
+
+// This is the list of 27 binary forms on page 235 of Edwards' paper
+
+printf "Set up the Edwards parametrizations.\n\n\n";
+
+frms := [
+  [0, 1, 0, 0, 0, 0, -144/7, 0, 0, 0, 0, -20736, 0],
+  [-1, 0, 0, -2, 0, 0, 80/7, 0, 0, 640, 0, 0, -102400],
+  [-1, 0, -1, 0, 3, 0, 45/7, 0, 135, 0, -2025, 0, -91125],
+  [1, 0, -1, 0, -3, 0, 45/7, 0, -135, 0, -2025, 0, 91125],
+  [-1, 1, 1, 1, -1, 5, -25/7, -35, -65, -215, 1025, -7975, -57025],
+  [3, 1, -2, 0, -4, -4, 24/7, 16, -80, -48, -928, -2176, 27072],
+  [-10, 1, 4, 7, 2, 5, 80/7, -5, -50, -215, -100, -625, -10150],
+  [-19, -5, -8, -2, 8, 8, 80/7, 16, 64, 64, -256, -640, -5632],
+  [-7, -22, -13, -6, -3, -6, -207/7, -54, -63, -54, 27, 1242, 4293],
+  [-25, 0, 0, -10, 0, 0, 80/7, 0, 0, 128, 0, 0, -4096],
+  [6, -31, -32, -24, -16, -8, -144/7, -64, -128, -192, -256, 256, 3072],
+  [-64, -32, -32, -32, -16, 8, 248/7, 64, 124, 262, 374, 122, -2353],
+  [-64, -64, -32, -16, -16, -32, -424/7, -76, -68, -28, 134, 859, 2207],
+  [-25, -50, -25, -10, -5, -10, -235/7, -50, -49, -34, 31, 614, 1763],
+  [55, 29, -7, -3, -9, -15, -81/7, 9, -9, -27, -135, -459, 567],
+  [-81, -27, -27, -27, -9, 9, 171/7, 33, 63, 141, 149, -67, -1657],
+  [-125, 0, -25, 0, 15, 0, 45/7, 0, 27, 0, -81, 0, -729],
+  [125, 0, -25, 0, -15, 0, 45/7, 0, -27, 0, -81, 0, 729],
+  [-162, -27, 0, 27, 18, 9, 108/7, 15, 6, -51, -88, -93, -710],
+  [0, 81, 0, 0, 0, 0, -144/7, 0, 0, 0, 0, -256, 0],
+  [-185, -12, 31, 44, 27, 20, 157/7, 12, -17, -76, -105, -148, -701],
+  [100, 125, 50, 15, 0, -15, -270/7, -45, -36, -27, -54, -297, -648],
+  [192, 32, -32, 0, -16, -8, 24/7, 8, -20, -6, -58, -68, 423],
+  [-395, -153, -92, -26, 24, 40, 304/7, 48, 64, 64, 0, -128, -512],
+  [-537, -205, -133, -123, -89, -41, 45/7, 41, 71, 123, 187, 205, -57],
+  [359, 141, -1, -21, -33, -39, -207/7, -9, -9, -27, -81, -189, -81],
+  [295, -17, -55, -25, -25, -5, 31/7, -5, -25, -25, -55, -17, 295]
+];
+
+assert #frms eq 27;
+
+// Check that each form has 13 coefficients and hence is of degree 12.
+for frm in frms do
+  assert #frm eq 13;
+end for;
+
+// Construct a set of triples of binary forms parametrizing the primitive
+// solutions to x² + y³ + z⁵ = 0 as in Theorem 2.1.
+
+// Define the polynomial ring ℚ[X,Z].
+PQ2<X,Z> := PolynomialRing(Rationals(),2);
+
+trips := []; // the entries will be [fᵢ, gᵢ, hᵢ]
+for i -> frm in frms do
+  // build the form hᵢ from the sequence of numbers frm = frms[i]
+  h := &+[Binomial(12,i)*frm[i+1]*X^i*Z^(12-i) : i in [0..12]];
+  // compute its first and second derivatives
+  hx := Derivative(h, X);
+  hz := Derivative(h, Z);
+  hxx := Derivative(hx, X);
+  hxz := Derivative(hx, Z);
+  hzx := Derivative(hz, X);
+  hzz := Derivative(hz, Z);
+  assert hxz eq hzx;
+  // compute gᵢ from the second derivatives of hᵢ ...
+  g := 1/132^2 * (hxx*hzz - hxz*hzx);
+  gx := Derivative(g, X);
+  gz := Derivative(g, Z);
+  // and fᵢ from the derivatives of hᵢ and gᵢ
+  f := 1/240 * (hx*gz - hz*gx);
+  // Check that we really parametrize the (2,3,5) equation.
+  assert f^2 + g^3 + h^5 eq 0;
+  Append(~trips, [f, g, h]);
+end for;
+
+// Set up the univariate polynomial ring P = ℚ[x].
+P<x> := PolynomialRing(Rationals());
+
+// Section 3
+// =========
+
+printf "SECTION 3\n";
+printf "=========\n\n";
+
+K := NumberField(x^2 - x - 1); // ℚ(√5)
+
+// Find factorization types.
+ftypes := [<{* Degree(e[1]) : e in Factorization(t[3]) *},
+            {* Degree(e[1]) : e in Factorization(ChangeRing(t[3], K))*}> : t in trips];
+
+indices := {1..#trips} diff {7, 11, 19}; // remove the forms with a 2-adic obstruction
+
+function set_str(s, width)
+  str := Sprintf("%o", s);
+  str := str[3..#str-2];
+  return " "^Max(0, Floor((width - #str)/2))*str*" "^Max(0, Ceiling((width - #str)/2));
+end function;
+
+printf "Table 2: Factorization types\n\n";
+printf "| factorization type of hᵢ |                    i ∈ I                     |\n";
+printf "+--------------------------+----------------------------------------------+\n";
+i1 := {i : i in indices | ftypes[i,1] eq {* 1, 1, 10 *}};
+printf "|     [1, 1, 10] over ℚ    |%o|\n", set_str(i1, 46);
+i2 := {i : i in indices | ftypes[i,1] eq {* 4, 8 *}};
+printf "|       [4, 8] over ℚ      |%o|\n", set_str(i2, 46);
+i3 := {i : i in indices | ftypes[i,2] eq {* 6, 6 *}};
+printf "|     [6, 6] over ℚ(√5)    |%o|\n", set_str(i3, 46);
+i4 := {i : i in indices | ftypes[i,2] eq {* 12 *}};
+printf "|      [12] over ℚ(√5)     |%o|\n", set_str(i4, 46);
+assert #i1 + #i2 + #i3 + #i4 eq #indices and indices eq i1 join i2 join i3 join i4;
+printf "+--------------------------+----------------------------------------------+\n\n\n";
+
+I := i4; // set of indices of forms that are irreducible over ℚ(√5)
+ICM := i2 join i3; // set of indices corresponding to CM curves
+
+// Section 4
+// =========
+
+printf "SECTION 4\n";
+printf "=========\n\n";
+
+// Restrict the possible p-adic residue classes of (u, v)
+// that can lead to p-adically primitive solutions of x² + y³ = z²⁵.
+function hasprimitivesolution(trip, p)
+  // trip: an entry [f, g, h] of trips
+  // p:    a prime number
+  // Returns a set of 2-element sequences [a*x + b, c*x + d] such that
+  // each (u, v) in ℤₚ² leading to a p-adically primitive solution via trip
+  // is, up to scaling by a unit, of the form (a*x+b, c*x+d) with x in ℤₚ.
+
+  tripA := [Evaluate(f, [x, 1]) : f in trip] cat [x, 1]; // the affine part of the triple in one variable X
+  tripI := [Evaluate(f, [1, p*x]) : f in trip] cat [1, p*x]; // the infinite part of the triple in one variable X
+
+  function hpsrec(trip)
+    // Recursively move into residue classes and check if solution exists and is primitive.
+    // trip: a quintuple of univariate polynomials as in tripA or tripI.
+    // Returns a set of 2-element sequences as above
+
+    function lbval(pol)
+      // Find a lower bound for the p-adic valuation of the values of a polynomial.
+      // Returns minimal valuation of the coefficients
+      //  together with a flag saying whether it occurs only in the constant term.
+      cs := Coefficients(pol);
+      vs := [Valuation(c, p) : c in cs];
+      minv := Min(vs);
+      minms := [i : i in [1..#cs] | vs[i] eq minv];
+      return <minv, minms eq [1]>;
+    end function;
+
+    // Compute the minimal valuations of the coefficients of each form in trip[1..3].
+    vals := [lbval(t) : t in trip[1..3]];
+    minv := Min([a[1] : a in vals]);
+    // If the minimal valuation is > 0, it does not give primitive solutions.
+    if minv gt 0 then return {}; end if;
+
+    // Now minv = 0.
+    // Check if valuation 0 occurs in the constant terms only (for the forms achieving it).
+    if forall{i : i in [1..3] | vals[i,1] gt minv or vals[i,2]} then
+      // All values give something primitive. Check if trip[3] can be a fifth power.
+      if vals[3,2] then
+        // We know the valuation vals[3,1] of the values of trip[3].
+        // It must be divisible by 5. This is also sufficient when p /= 1 mod 5,
+        // as all p-adic units are fifth powers.
+        if IsDivisibleBy(vals[3,1], 5) then
+          return {[trip[4], trip[5]]};
+        else
+          return {};
+        end if;
+      elif vals[3,1] ge 5 /* 10 */ then
+        // Stop the recursion.
+        return {[trip[4], trip[5]]};
+      end if;
+    end if;
+    // No decision yet: need to recurse.
+    return &join[hpsrec([Evaluate(f, p*x + k) : f in trip]) : k in [0..p-1]];
+  end function;
+
+  result := hpsrec(tripA) join hpsrec(tripI);
+  // simplification; this case occurs frequently
+  if {[p*x + k, 1] : k in [0..p-1]} subset result then
+    result := Include(result diff {[p*x + k, 1] : k in [0..p-1]}, [x, 1]);
+  end if;
+  if {[1, p*x + k] : k in [0..p-1]} subset result then
+    result := Include(result diff {[1, p*x + k] : k in [0..p-1]}, [1, x]);
+  end if;
+  return result;
+end function;
+
+// Compute Table 3
+printf "Table 3: non-excluded residue classes for p = 2, 3\n\n";
+printf "|  i |          p = 2           |                 p = 3                  |\n";
+printf "+----+--------------------------+----------------------------------------+\n";
+for i -> trip in trips do
+  printf "| %2o |", i;
+  res2 := hasprimitivesolution(trip, 2);
+  res3 := hasprimitivesolution(trip, 3);
+  str2 := ["("*Sprintf("%o", e[1])*", "*Sprintf("%o", e[2])*")" : e in res2];
+  str3 := ["("*Sprintf("%o", e[1])*", "*Sprintf("%o", e[2])*")" : e in res3];
+  str2 := #str2 eq 0 select "---" else &*[Parent("")| s*", " : s in str2[1..#str2-1]]*str2[#str2];
+  str3 := #str3 eq 0 select "---" else &*[Parent("")| s*", " : s in str3[1..#str3-1]]*str3[#str3];
+  str2 := " "^Max(0, Floor((26 - #str2)/2))*str2*" "^Max(0, Ceiling((26 - #str2)/2));
+  str3 := " "^Max(0, Floor((40 - #str3)/2))*str3*" "^Max(0, Ceiling((40 - #str3)/2));
+  printf "%o|%o|\n", str2, str3;
+end for;
+printf "+----+--------------------------+----------------------------------------+\n\n\n";
+
+// Section 5
+// =========
+
+printf "SECTION 5\n";
+printf "=========\n\n";
+
+// The relevant information from Tables 1 and 2 in [FNS20]
+
+ab2 := {<a, b> : a in [0..3], b in [0..7]};
+HT2 := AssociativeArray(ab2); // hashtable, gives set of twists d and set of curves
+// i₂ = 1
+HT2[<1, 7>] := <{1, -3}, {"54a1"}>;
+HT2[<3, 7>] := HT2[<1, 7>];
+// i₂ = 2
+HT2[<0, 1>] := <{1, -1, 3, -3}, {"288a1", "864a1", "864b1"}>;
+HT2[<0, 5>] := HT2[<0, 1>];
+HT2[<0, 3>] := <{2, -2, 6, -6}, {"288a1", "864a1", "864b1"}>;
+HT2[<0, 7>] := HT2[<0, 3>];
+// i₂ = 3
+HT2[<2, 1>] := <{1, -1, 3, -3}, {"96a1", "864c1"}>;
+HT2[<2, 5>] := HT2[<2, 1>];
+HT2[<2, 3>] := <{2, -2, 6, -6}, {"96a1", "864c1"}>;
+HT2[<2, 7>] := HT2[<2, 3>];
+// i₂ = 4
+HT2[<1, 0>] := <{-2, 6}, {"27a1"}>;
+HT2[<3, 0>] := <{2, -6}, {"27a1"}>;
+// i₂ = 5
+HT2[<1, 2>] := HT2[<2, 3>];
+HT2[<3, 2>] := HT2[<1, 2>];
+// i₂ = 6
+HT2[<1, 6>] := HT2[<0, 3>];
+HT2[<3, 6>] := HT2[<1, 6>];
+// i₂ = 7
+HT2[<1, 4>] := <{-2, 6}, {Parent("")| }>;
+HT2[<3, 4>] := <{2, -6}, {Parent("")| }>;
+
+ab3 := {<a, b> : a in [0..8], b in [0..2]};
+HT3 := AssociativeArray(ab3);
+ds := {1, -1, 2, -2, 3, -3, 6, -6};
+// i₃ = 1
+HT3[<1, 2>] := <{-3, 6}, {"96a1"}>;
+HT3[<8, 2>] := <{3, -6}, {"96a1"}>;
+// i₃ = 2
+HT3[<0, 1>] := <ds, {"288a1"}>;
+HT3[<0, 2>] := HT3[<0, 1>];
+// i₃ = 3
+HT3[<3, 1>] := <ds, {"27a1", "864b1", "864c1"}>;
+HT3[<6, 1>] := HT3[<3, 1>];
+// i₃ = 4
+HT3[<3, 2>] := <ds, {"54a1", "864a1"}>;
+HT3[<6, 2>] := HT3[<3, 2>];
+// i₃ = 5
+HT3[<1, 0>] := HT3[<3, 1>];
+HT3[<8, 0>] := HT3[<1, 0>];
+HT3[<2, 0>] := HT3[<1, 0>];
+HT3[<7, 0>] := HT3[<1, 0>];
+// i₃ = 6
+HT3[<4, 0>] := HT3[<0, 1>];
+HT3[<5, 0>] := HT3[<0, 1>];
+// i₃ = 7
+HT3[<1, 1>] := HT3[<3, 2>];
+HT3[<8, 1>] := HT3[<1, 1>];
+HT3[<4, 1>] := HT3[<1, 1>];
+HT3[<5, 1>] := HT3[<1, 1>];
+// i₃ = 8
+HT3[<2, 1>] := HT3[<0, 1>];
+HT3[<7, 1>] := HT3[<2, 1>];
+
+function FNSinfo(i)
+  // Find curves and twists associated to form no. i.
+  t := trips[i];
+  // Evaluate fᵢ and gᵢ at all primitive pairs (u, v) mod 8.
+  pairs2 := {<(Integers()!Evaluate(t[1], [u, v])) mod 4,
+              (Integers()!Evaluate(t[2], [u, v])) mod 8> :
+               u, v in [0..7] | IsOdd(u) or IsOdd(v)};
+  // Take into account that fᵢ is only determined up to sign.
+  pairs2 join:= {<(-ab[1]) mod 4, ab[2]> : ab in pairs2};
+  // Extract the 2-adic information from HT2.
+  twc2 := {};
+  for e in pairs2 do
+    if IsDefined(HT2, e) then
+      Include(~twc2, HT2[e]);
+    end if;
+  end for;
+  // Similarly for the 3-adic info.
+  pairs3 := {<Integers()!(Evaluate(t[1], [u, v])) mod 9,
+              Integers()!(Evaluate(t[2], [u, v])) mod 3> :
+               u, v in [0..8] | u mod 3 ne 0 or v mod 3 ne 0};
+  pairs3 join:= {<(-ab[1]) mod 9, ab[2]> : ab in pairs3};
+  twc3 := {};
+  for e in pairs3 do
+    if IsDefined(HT3, e) then
+      Include(~twc3, HT3[e]);
+    end if;
+  end for;
+  // Now consider all possible combinations of 2-adic and 3-adic conditions...
+  inters := {<e2[1] meet e3[1], e2[2] meet e3[2]> : e2 in twc2, e3 in twc3};
+  // ...and return their union.
+  return &join{e[1] : e in inters}, &join{e[2] : e in inters};
+end function;
+
+printf "Table 4: Correspondence for i ∈ ℐ (without the symplectic type)\n\n";
+
+printf "|  i |    W    |     d      |\n";
+printf "+----+---------+------------+\n";
+for i in Sort(Setseq(I)) do
+  twists, curves := FNSinfo(i);
+  tw := {Parent("")| };
+  count := 0;
+  while not IsEmpty(twists) do
+    d := Rep(twists);
+    if -d in twists then
+      twists diff:= {d, -d};
+      Include(~tw, "±"*IntegerToString(Abs(d)));
+      count +:= 1;
+    else
+      Exclude(~twists, d);
+      Include(~tw, IntegerToString(d));
+    end if;
+  end while;
+  printf "| %2o |%o|%o|\n", i, set_str(curves, 9), set_str(tw, 12 + count);
+end for;
+printf "+----+---------+------------+\n\n";
+
+printf "\nTable 5: Correspondence to CM curves (without the symplectic type)\n\n";
+
+printf "|  i |    W    |     d      |\n";
+printf "+----+---------+------------+\n";
+for i in Sort(Setseq(ICM)) do
+  twists, curves := FNSinfo(i);
+  tw := {Parent("")| };
+  count := 0;
+  while not IsEmpty(twists) do
+    d := Rep(twists);
+    if -d in twists then
+      twists diff:= {d, -d};
+      Include(~tw, "±"*IntegerToString(Abs(d)));
+      count +:= 1;
+    else
+      Exclude(~twists, d);
+      Include(~tw, IntegerToString(d));
+    end if;
+  end while;
+  printf "| %2o |%o|%o|\n", i, set_str(curves, 9), set_str(tw, 12 + count);
+end for;
+printf "+----+---------+------------+\n\n\n";
+
+
+// Section 6
+// =========
+
+printf "SECTION 6\n";
+printf "=========\n\n";
+
+// Extract the genus 2 curves from a factorization involving a linear factor.
+function genus2curves(l1, l2, r, a)
+  // l1, l2: binary linear forms over ℤ
+  // r: a degree 10 binary form over ℤ
+  // a: a nonzero integer (corresponding to α)
+  assert IsHomogeneous(l1) and IsHomogeneous(l2) and IsHomogeneous(r);
+  assert Degree(l1) eq 1 and Degree(l2) eq 1 and Degree(r) eq 10;
+
+  // Determine A, B, C.
+  pol1 := l1^10; pol2 := (l1*l2)^5; pol3 := l2^10;
+  mons := MonomialsOfDegree(Parent(r), 10);
+  assert #mons eq 11;
+  mat := Matrix([[MonomialCoefficient(pol, m) : m in mons] : pol in [pol1, pol2, pol3]]);
+  vec := Vector([MonomialCoefficient(r, m) : m in mons]);
+  sol, ker := Solution(mat, vec);
+  assert Dimension(ker) eq 0;
+  A, B, C := Explode(Eltseq(sol));
+  D := B^2 - 4*A*C;
+  return [HyperellipticCurve(4*a*A*x^5 + D), HyperellipticCurve(4*a*C*x^5 + D)];
+end function;
+
+C1 := HyperellipticCurve(x^5 + 2^8*5^3);
+C2 := HyperellipticCurve(x^5 + 2^6*5^3);
+
+// i = 1
+l1 := X;
+l2 := Z;
+r := -248832*X^10 - 19008*X^5*Z^5 + 12*Z^10;
+assert trips[1,3] eq l1*l2*r;
+a := 12;
+g2c1 := genus2curves(l1, l2, r, a);
+assert exists{C : C in g2c1 | IsIsomorphic(C, C1)};
+
+// i = 20
+l1 := X;
+l2 := Z;
+r := -3072*X^10 - 19008*X^5*Z^5 + 972*Z^10;
+assert trips[20,3] eq l1*l2*r;
+a := 12;
+g2c1 := genus2curves(l1, l2, r, a);
+assert exists{C : C in g2c1 | IsIsomorphic(C, C2)};
+
+// i = 25
+l1 := X + Z;
+l2 := X - Z;
+r := -57*X^10 + 2460*X^9*Z + 12285*X^8*Z^2 + 29520*X^7*Z^3 + 47430*X^6*Z^4 + 61992*X^5*Z^5
+        + 53370*X^4*Z^6 + 29520*X^3*Z^7 + 9315*X^2*Z^8 + 2460*X*Z^9 + 537*Z^10;
+assert trips[25,3] eq l1*l2*r;
+a := 1;
+g2c1 := genus2curves(l1, l2, r, a);
+assert exists{C : C in g2c1 | IsIsomorphic(C, C1)};
+
+printf "We have shown that for each i ∈ {1,20,25}, we can reduce\n";
+printf "to one of the genus 2 curves\n";
+printf "  C₁: y² = x⁵ + 2⁸5³   or   C₂: y² = x⁵ + 2⁶5³ .\n\n";
+
+MW1, mMW1, fl1, fl2 := MordellWeilGroup(Jacobian(C1));
+assert fl1 and Invariants(MW1) eq [0];
+ptsC1 := Chabauty(mMW1(MW1.1));
+printf "We computed that Jac(C₁)(ℚ) ≅ ℤ and C₁(ℚ) consists of the points in\n%o\n\n", ptsC1;
+
+MW2, mMW2, fl1, fl2 := MordellWeilGroup(Jacobian(C2));
+assert fl1 and fl2 and IsEmpty(Invariants(MW2)); // MW2 is trivial
+ptsC2 := Chabauty0(Jacobian(C2));
+assert #ptsC2 eq 1;
+printf "We computed that Jac(C₂)(ℚ) = 0,\n";
+printf "so C₂(ℚ) consists only of the point at infinity.\n\n\n";
+
+
+// Section 7
+// =========
+
+printf "SECTION 7\n";
+printf "=========\n\n";
+
+P2Z<XX,ZZ> := PolynomialRing(Integers(), 2);
+PZ<xx> := PolynomialRing(Integers());
+
+i2 := Sort(Setseq(i2));
+h48 := [P2Z!trips[i,3] : i in i2];
+
+// Find the factorizations.
+h48fact := [[e[1] : e in Factorization(h)] : h in h48];
+assert forall{fact : fact in h48fact | MonomialCoefficient(fact[1], XX^4) gt 0};
+// Fix the scaling of the second factor.
+h48fact := [[f[1], ExactQuotient(h48[i], f[1])] where f := h48fact[i] : i in [1..#h48]];
+
+// Check the claim on the resultants
+assert forall{fact : fact in h48fact | MonomialCoefficient(fact[2], XX^8) ne 0};
+resultants := [Resultant(Evaluate(f[1], [xx, 1]), Evaluate(f[2], [xx, 1])) : f in h48fact];
+assert forall{r : r in resultants | Set(PrimeDivisors(r)) subset {2, 3, 5}};
+
+printf "We have verified that the resultants of hᵢ₄ and hᵢ₈\n";
+printf "are supported in {2,3,5}.\n";
+
+for j -> i in i2 do
+  // j: index in h48 etc., i: index in trips
+  for p in [2, 3] do
+    pr := hasprimitivesolution(trips[i], p);
+    evalp := [Evaluate(h48fact[j,1], uv) : uv in pr];
+    assert forall{pol : pol in evalp
+                      | Valuation(Coefficient(pol, 0), p) eq 0 and
+                        forall{k : k in [1..Degree(pol)] | Valuation(Coefficient(pol, k), p) gt 0}};
+  end for;
+  pr5 := hasprimitivesolution(trips[i], 5);
+  eval5 := [Evaluate(h48fact[j,2], uv) : uv in pr5];
+  assert forall{pol : pol in eval5
+                    | Valuation(Coefficient(pol, 0), 5) eq 0 and
+                      forall{k : k in [1..Degree(pol)] | Valuation(Coefficient(pol, k), 5) gt 0}};
+end for;
+
+printf "We have verified that hᵢ₄(u,v) must be a fifth power.\n\n";
+
+Qi := NumberField(x^2 + 1); // ℚ(i)
+Zi := Integers(Qi); // ℤ[i]
+ii := Zi!Qi.1; // i in ℤ[i]
+assert ii eq Zi.2;
+
+P2Zi<U,V> := PolynomialRing(Zi, 2);
+// Complex conjugation acting on the coefficients.
+conj := hom<P2Zi -> P2Zi | hom<Zi -> P2Zi | 1, -ii>, U, V>;
+re := func<pol | &+[(Integers()!Eltseq(cs[i])[1])*XX^Degree(ms[i], U)*ZZ^Degree(ms[i], V) : i in [1..#cs]]
+                  where cs, ms := CoefficientsAndMonomials(pol)>;
+im := func<pol | &+[Integers()!(Eltseq(cs[i])[2])*XX^Degree(ms[i], U)*ZZ^Degree(ms[i], V) : i in [1..#cs]]
+                  where cs, ms := CoefficientsAndMonomials(pol)>;
+PZi := PolynomialRing(Zi);
+
+// Record the data in Table 6.
+table6 := [
+  <(3 + 6*ii)*U^2 + V^2, 3, 2, -1, 6*XX*ZZ>,
+  <(-3 + 6*ii)*U^2 + V^2, 3, 2, 1, 6*XX*ZZ>,
+  <(2 - 3*ii)*U^2 + 2*U*V + 2*V^2, -3, 2, 1, 3*XX*(XX + 2*ZZ)>,
+  <3*U^2 + (1 - 2*ii)*V^2, -3, 2, 1, 6*XX*ZZ>,
+  <3*U^2 + (-1 - 2*ii)*V^2, 3, -2, 1, 6*XX*ZZ>,
+  <(2 + ii)*U^2 + (2 - 2*ii)*U*V + (2 + ii)*V^2, -3, -2, 1, 3*(XX^2 - ZZ^2)>
+];
+
+// Check the specification.
+for j -> f in h48fact do
+  H, ga, al, be, S := Explode(table6[j]);
+  assert H*conj(H) eq P2Zi!f[1]; // hᵢ₄ is the product of Hᵢ and its conjugate
+  assert Set(PrimeDivisors(Norm(Resultant(Evaluate(H, [PZi.1, 1]), Evaluate(conj(H), [PZi.1, 1])))))
+           subset {2, 3};
+  assert ga*(al*re(H) + be*im(H))*im(H) eq S^2;
+end for;
+
+pol_re := 1 - 10*x^2 + 5*x^4;
+pol_im := 5*x - 10*x^3 + x^5;
+
+// Compute right hand sides of genus 4 hyperelliptic equations.
+Fseq := [];
+for j -> t in table6 do
+  _, ga, al, be := Explode(t);
+  Append(~Fseq, ga*(al*pol_re + be*pol_im)*pol_im);
+end for;
+
+Gseq := [ExactQuotient(F, x*(x^4 - 10*x^2 + 5)) : F in Fseq];
+
+// Check that all Fᵢ agree up to sign and changing the sign of x.
+F0 := Fseq[1];
+F1 := Fseq[2];
+assert F1 eq -Evaluate(F0, -x);
+assert Set(Fseq) subset {F0, F1, Evaluate(F0, -x), Evaluate(F1, -x)};
+
+// The two non-isomorphic genus 4 curves.
+Cseq := [HyperellipticCurve(F) : F in [F0, F1]];
+
+printf "Computing the Selmer set of the first curve (this may take a while)...\n";
+time assert #TwoCoverDescent(Cseq[1]) eq 1;
+printf "  --> the Selmer set of the first curve has exactly one element.\n";
+// Verify claim on the genus 1 curve.
+H := HyperellipticCurve(5*(x^4 - 10*x^2 + 5));
+E := EllipticCurve(H, H![0,5]);
+MW, _, fl1, fl2 := MordellWeilGroup(E);
+assert fl1 and fl2 and Invariants(MW) eq [2];
+printf "We have verified that y² = 5(x⁴ - 10x² + 5) has exactly two rational points\n";
+printf "  --> The only rational point on the first curve is (0,0).\n\n";
+
+printf "Computing the Selmer set of the second curve (this may take a while)...\n";
+time assert #TwoCoverDescent(Cseq[2]) eq 2;
+printf "  --> the Selmer set of the second curve has exactly two elements.\n\n";
+// The two elements come from (0,0) and (1,±12): these give different components
+// 5 and -1 (mod squares) in the norm of the "middle" component
+// associated to x^4 - 10*x^2 + 5.
+
+// Do the Chabauty computation
+printf "Computing the 2-Selmer group of the Jacobian (this may take a while)...\n";
+// We use the odd degree model obtained via x → 1/x.
+_, C := HasOddDegreeModel(Cseq[2]);
+J := Jacobian(C);
+time Sel2J, mSel2J := TwoSelmerGroup(J);
+assert Invariants(Sel2J) eq [2, 2];
+assert Invariants(TwoTorsionSubgroup(J)) eq [2];
+printf "  --> dim Sel = 2 and J(ℚ)[2] = ℤ/2 ==> rank J(ℚ) ≤ 1\n";
+bptC := C![1,0,0]; ptC := C![1,12];
+ptJ := ptC - bptC;
+assert Order(ptJ) eq 0;
+printf "      also, [(1,12) - (0,0)] has infinite order ==> rank J(ℚ) = 1.\n\n";
+
+// We work over ℚ₁₁.
+Q11 := pAdicField(11);
+
+J11 := BaseChange(J, GF(11)); C11 := Curve(J11);
+G11, mG11 := AbelianGroup(J11);
+assert Invariants(G11) eq [2, 2, 70, 70];
+ptJ70 := 70*ptJ;
+assert 70*J11!ptJ eq J11!0; // in kernel of reduction
+
+// Check that the only residue classes mod 11 that can contain rational points
+// are those that are known to to so (∞ and (1,±1)).
+// This can be shown from knowing that the difference between any rational point
+// and one of the known ones must be in 2J(ℚ).
+J11_2 := {mG11(2*g) : g in G11};
+assert {pt : pt in Points(C11) | pt - C11![1,0,0] in J11_2 or pt - C11![1,1] in J11_2}
+         eq {C11| [1,0,0], [1,1], [1,-1]};
+printf "We have checked that every rational point has the same reduction mod 11\n";
+printf "as one of the three known rational points.\n\n";
+
+// We use (1,12) as the base-point for the computation of the integrals.
+// t = x - 1 is a uniformizer there.
+// We then have  x = 1 + t  and  y = 12 sqrt(F(1 + t)/144) , where y² = F(x)
+// is the equation of C.
+Lrs<t> := LaurentSeriesAlgebra(Rationals());
+yy := 12*Sqrt(Evaluate(HyperellipticPolynomials(C), 1+t)/144);
+
+// Write ptJ70 as [D - 4*(1,12)].
+D := ptJ70 - 4*(C![1,0,0] - C![1,-12]);
+polD := Evaluate(D[1], x + 1);
+// Check that all roots have positive 11-adic valuation.
+assert forall{i : i in [0..Degree(polD)-1] | Valuation(Coefficient(polD, i), 11) gt 0};
+
+// The (four) points in D are of the form (tᵢ, yy(tᵢ)) with tᵢ a root of polD.
+// We need their power sums (in ℚ₁₁). They are obtained as coefficients of
+// -t A'(t)/A(t)  where  A is the product of (1 - tᵢ t),
+// which is the reversed polynomial polD.
+cofsD := ChangeUniverse(Coefficients(1 - t*Derivative(Dp)/Dp), Q11)
+           where Dp := Evaluate(P!Reverse(Coefficients(polD)), t);
+
+// A basis of the holomorphic differentials is given by  tᵐ dt/(2yy) for m = 0..3.
+om0 := Integral(1/(2*yy));
+omseq := [ChangeUniverse(Coefficients(1 + t^m*om0), Q11) : m in [0..3]];
+// We compute the (formal) integrals...
+integrals := [&+[s[j]*cofsD[j] : j in [2..Min(#s, #cofsD)]] : s in omseq];
+// ...divide by 11 and reduce mod 11.
+int_11 := [GF(11)!(i/11) : i in integrals];
+// Then we find the linear combinations (mod 11) of the differentials
+// that annihilate ptJ70.
+mat := Matrix([[i] : i in int_11]);
+kermat := KernelMatrix(mat); assert Nrows(kermat) eq 3;
+
+printf "A basis of the image mod 11 of the annihilating differentials is\n";
+for i := 1 to 3 do
+  printf "(%o) dx/2y ", &+[(Integers()!kermat[i, j])*x^(j-1) : j in [1..4]];
+  if i eq 2 then printf " and  "; else printf ",  "; end if;
+end for;
+PGF11 := PolynomialRing(GF(11));
+pols11 := [&+[kermat[i,j]*PGF11.1^(j-1) : j in [1..4]] : i in [1..3]];
+assert exists{pol : pol in pols11 | Evaluate(pol, 1) ne 0} and
+         exists{pol : pol in pols11 | Degree(pol) lt 3};
+printf " .\n\nFor each of the relevant residue classes, one of these does not vanish\n";
+printf "  ==> the known rational points are the only ones in their residue classes.\n\n\n";
+
+
+// Section 8
+// =========
+
+printf "SECTION 8\n";
+printf "=========\n\n";
+
+h := 25*X^12 + 275*X^9*Z^3 - 165*X^6*Z^6 - 55*X^3*Z^9 + Z^12;
+
+assert Evaluate(-trips[2,3], [-X/2, Z]) eq h and
+       Evaluate(-trips[10,3], [Z/2, X]) eq h and
+       Evaluate(-trips[26,3], [(X+Z)/2, (X-Z)/2]) eq h;
+
+// Recall that K = ℚ(√5).
+
+sqrt5 := Roots(x^2 - 5, K)[1,1];
+PK2<uu,vv> := PolynomialRing(K, 2);
+PK := PolynomialRing(K);
+
+hleft := vv^6 - (55 + 27*sqrt5)/2*uu^3*vv^3 - 5*uu^6;
+hright := vv^6 - (55 - 27*sqrt5)/2*uu^3*vv^3 - 5*uu^6;
+assert hleft*hright eq PK2!h;
+
+assert Set(PrimeDivisors(Integers()!Norm(
+            Resultant(Evaluate(hleft, [PK.1, 1]), Evaluate(hright, [PK.1, 1])))))
+         subset {3, 5};
+
+hrat := PQ2!(hleft + hright)/2;
+hirr := PQ2!((hleft - hright)/(2*sqrt5));
+assert hleft eq (PK2!hrat) + sqrt5*PK2!hirr;
+
+L := NumberField(x^2 + 5); // ℚ(√-5)
+PL2<uL,vL> := PolynomialRing(L, 2);
+assert L.1^2 eq -5;
+
+assert (PL2!hrat) - (55 + 4*L.1)/27*PL2!hirr eq (vL^3 + L.1*uL^3)^2;
+
+pol_rat := X^5 + 50*X^3*Z^2 + 125*X*Z^4;
+pol_irr := 5*X^4*Z + 50*X^2*Z^3 + 25*Z^5;
+assert (uu + sqrt5*vv)^5 eq (PK2!pol_rat) + sqrt5*PK2!pol_irr;
+
+F := 81*X^10 - 1650*X^9*Z + 16725*X^8*Z^2 - 99000*X^7*Z^3 + 395250*X^6*Z^4
+      - 1039500*X^5*Z^5 + 1961250*X^4*Z^6 - 2475000*X^3*Z^7 + 2128125*X^2*Z^8
+      - 1031250*X*Z^9 + 215625*Z^10;
+assert F eq 9^2*PQ2!(((PL2!pol_rat) - (55 + 4*L.1)/27*PL2!pol_irr) *
+                       ((PL2!pol_rat) - (55 - 4*L.1)/27*PL2!pol_irr));
+
+// Consider εʲ (a + b√5)⁵ for j = -2, -1, 1, 2.
+eps := (1 + sqrt5)/2;
+epsbar := (1 - sqrt5)/2;
+function gpols(j)
+  pol1 := eps^j*(uu + sqrt5*vv)^5;
+  pol2 := epsbar^j*(uu - sqrt5*vv)^5;
+  return [PQ2| (pol1 + pol2)/2, (pol1 - pol2)/(2*sqrt5)];
+end function;
+gseq := [gpols(j) : j in [-2, -1, 1, 2]];
+
+F8seq := [PQ2| 9^2*((PL2!g[1]) - (55 + 4*L.1)/27*PL2!g[2])*((PL2!g[1]) - (55 - 4*L.1)/27*PL2!g[2])
+            : g in gseq];
+
+// Construct the hyperelliptic curves y² = F(x,1) for F in F8seq.
+Dseq := [HyperellipticCurve(Evaluate(F, [x, 1])) : F in F8seq];
+// Get nicer models.
+Dseq1 := [SimplifiedModel(ReducedMinimalWeierstrassModel(D)) : D in Dseq];
+
+// Check that the fake Selmer sets are empty for j = 1, 2.
+printf "Computing 2-Selmer sets for D₁ and D₂ (this may take a while)...\n";
+time assert IsEmpty(TwoCoverDescent(Dseq1[3])) and IsEmpty(TwoCoverDescent(Dseq1[4]));
+printf "   ...they are empty ==> no rational points on D₁ and D₂.\n\n";
+
+printf "That D₀(ℚ) = {(1 : 9 : 0), (1 : -9 : 0)} is shown in [Sto17].\n\n";
+
+Jseq := [Jacobian(D) : D in Dseq1[1..2]];
+assert forall{J : J in Jseq | TorsionBound(J, 5) eq 1};
+printf "Computing 2-Selmer groups for J₋₂ and J₋₁ (this may take a while)...\n";
+time Selm2, mSelm2 := TwoSelmerGroup(Jseq[1]);
+time Selm1, mSelm1 := TwoSelmerGroup(Jseq[2]);
+assert #Selm2 eq 4 and #Selm1 eq 4;
+printf "   ...this shows that the rank is at most 2 (and there is no torsion).\n\n";
+
+printf "Computing 2-Selmer sets for D₋₂ and D₋₁ (this may take a while)...\n";
+time assert #TwoCoverDescent(Dseq1[1]) eq 1 and #TwoCoverDescent(Dseq1[2]) eq 1;
+printf "   ...they have one element ==> Lemma 8.1\n\n";
+
+Q21 := elt<Jseq[1] | x^4 + 2*x^3 + 4*x^2 + 3*x + 1, -30*x^3 - 45*x^2 - 45*x - 15, 4>;
+Q22 := elt<Jseq[1] | x^4 + 1/5*x^3 + 23/5*x^2 + 21/5*x + 3/5, (-683*x^3 + 321*x^2 + 1982*x + 666)/25, 4>;
+
+Q11 := elt<Jseq[2] | x^4 + 2*x^3 + 4*x^2 + 3*x + 1, -60*x^3 - 90*x^2 - 90*x - 30, 4>;
+Q12 := elt<Jseq[2] | x^4 - 53/27*x^3 + 4/9*x + 1/9, (-52693*x^3 + 81*448*x^2 + 3*8063*x + 3*1118)/243, 4>;
+
+// Verify that the given points generate a subgroup of odd index.
+
+// For J₋₂, reduce mod 29.
+Jm2_29 := BaseChange(Jseq[1], GF(29));
+Gm2_29, mGm2_29 := AbelianGroup(Jm2_29);
+Am2_29, qAm2_29 := quo<Gm2_29 | 2*Gm2_29>;
+assert Invariants(sub<Am2_29 | [qAm2_29((Jm2_29!Q) @@ mGm2_29) : Q in [Q21, Q22]]>) eq [2, 2];
+
+// Similarly for J₋₁.
+Jm1_29 := BaseChange(Jseq[2], GF(29));
+Gm1_29, mGm1_29 := AbelianGroup(Jm1_29);
+Am1_29, qAm1_29 := quo<Gm1_29 | 2*Gm1_29>;
+assert Invariants(sub<Am1_29 | [qAm1_29((Jm1_29!Q) @@ mGm1_29) : Q in [Q11, Q12]]>) eq [2, 2];
+
+printf "We have verified that Qⱼ₁ and Qⱼ₂ generate a subgroup\n";
+printf "of finite odd index.\n\n";
+
+// Use p = 7 for the Chabauty argument.
+Jm2_7 := BaseChange(Jseq[1], GF(7));
+Gm2_7, mGm2_7 := AbelianGroup(Jm2_7);
+// The image of <Q21, Q22>.
+Im2_7 := sub<Gm2_7 | [(Jm2_7!Q) @@ mGm2_7 : Q in [Q21, Q22]]>;
+assert Index(Gm2_7, Im2_7) eq 2;
+Cm2_7 := Curve(Jm2_7);
+ptsm2_7 := Points(Cm2_7);
+bptm2 := Cm2_7![1, -3, 0];
+assert {pt : pt in ptsm2_7 | (pt - bptm2) @@ mGm2_7 in 2*Im2_7} eq {Cm2_7| [1, 3, 0], [1, 4, 0]};
+
+Jm1_7 := BaseChange(Jseq[2], GF(7));
+Gm1_7, mGm1_7 := AbelianGroup(Jm1_7);
+// The image of <Q11, Q12>.
+Im1_7 := sub<Gm1_7 | [(Jm1_7!Q) @@ mGm1_7 : Q in [Q11, Q12]]>;
+assert Index(Gm1_7, Im1_7) eq 2;
+Cm1_7 := Curve(Jm1_7);
+ptsm1_7 := Points(Cm1_7);
+bptm1 := Cm1_7![1, -6, 0];
+assert {pt : pt in ptsm1_7 | (pt - bptm1) @@ mGm1_7 in 2*Im1_7} eq
+       {Cm1_7| [1, 1, 0], [1, 6, 0], [0, 0, 1], [1, 0, 1]};
+
+printf "We have verified Proposition 8.3.\n\n";
+
+// Find generators of the kernel of reduction mod 7 on the Mordell-Weil groups.
+Z2 := FreeAbelianGroup(2);
+homm2 := hom<Z2 -> Gm2_7 | [(Jm2_7!Q) @@ mGm2_7 : Q in [Q21, Q22]]>;
+homm1 := hom<Z2 -> Gm1_7 | [(Jm1_7!Q) @@ mGm1_7 : Q in [Q11, Q12]]>;
+kerm2 := Kernel(homm2);
+kerm1 := Kernel(homm1);
+// Use lattice base reduction to find nice representatives.
+latm2 := Lattice(Matrix([Eltseq(Z2!k) : k in OrderedGenerators(kerm2)]));
+latm1 := Lattice(Matrix([Eltseq(Z2!k) : k in OrderedGenerators(kerm1)]));
+// Shifts to obtain divisors D so that D - 4*∞₋ is in the kernel of reduction.
+shm2 := 2*((Dseq1[1]![1, -3, 0]) - Dseq1[1]![1, 3, 0]);
+shm1 := 2*((Dseq1[2]![1, -6, 0]) - Dseq1[2]![1, 6, 0]);
+R21 := Basis(latm2)[1][1]*Q21 + Basis(latm2)[1][2]*Q22 + shm2;
+R22 := Basis(latm2)[2][1]*Q21 + Basis(latm2)[2][2]*Q22 + shm2;
+R11 := Basis(latm1)[1][1]*Q11 + Basis(latm1)[1][2]*Q12 + shm1;
+R12 := Basis(latm1)[2][1]*Q11 + Basis(latm1)[2][2]*Q12 + shm1;
+
+// Check that the divisors all reduce mod 7 to 4*∞₋.
+assert forall{R : R in [* R11, R12, R21, R22 *] | Degree(ChangeRing(7*R[1], GF(7))) eq 0};
+
+// A local uniformizer at ∞₋ is t = 1/x.
+// We obtain y locally as -t⁻⁵ times the square root of t¹⁰ F(1/t),
+// where F is the polynomial on the right hand side of the curve equation.
+ym2 := Sqrt(Lrs!P!Reverse(Coefficients(HyperellipticPolynomials(Dseq1[1]))));
+ym1 := Sqrt(Lrs!P!Reverse(Coefficients(HyperellipticPolynomials(Dseq1[2]))));
+
+Q7 := pAdicField(7);
+
+// The relevant integral is a sum over j ≥ 1 of terms that are a coefficient
+// coming from the formal integral of t³⁻ⁿ/2y(t) times the sum of tᵢʲ,
+// where the tᵢ are the inverses of the x-coordinates of the four points
+// in the divisor. These power sums are obtained as coefficients of the
+// negative logarithmic derivative w.r.t. X of the product over 1 - tᵢX,
+// which is the first polynomial in the Mumford representation, scaled to be monic.
+polR21 := Lrs!(R21[1]/Coefficient(R21[1], 0));
+polR22 := Lrs!(R22[1]/Coefficient(R22[1], 0));
+polR11 := Lrs!(R11[1]/Coefficient(R11[1], 0));
+polR12 := Lrs!(R12[1]/Coefficient(R12[1], 0));
+
+cofsR21 := ChangeUniverse(Coefficients(1 - t*Derivative(polR21)/polR21), Q7);
+cofsR22 := ChangeUniverse(Coefficients(1 - t*Derivative(polR22)/polR22), Q7);
+cofsR11 := ChangeUniverse(Coefficients(1 - t*Derivative(polR11)/polR11), Q7);
+cofsR12 := ChangeUniverse(Coefficients(1 - t*Derivative(polR12)/polR12), Q7);
+
+ym2seq := [ChangeUniverse(Coefficients(1 + Integral(t^(3-n)/2/ym2)), Q7) : n in [0..3]];
+ym1seq := [ChangeUniverse(Coefficients(1 + Integral(t^(3-n)/2/ym1)), Q7) : n in [0..3]];
+
+// Now compute the integrals.
+integralsR21 := [&+[s[j]*cofsR21[j] : j in [2..Min(#s, #cofsR21)]] : s in ym2seq];
+integralsR22 := [&+[s[j]*cofsR22[j] : j in [2..Min(#s, #cofsR22)]] : s in ym2seq];
+integralsR11 := [&+[s[j]*cofsR11[j] : j in [2..Min(#s, #cofsR11)]] : s in ym1seq];
+integralsR12 := [&+[s[j]*cofsR12[j] : j in [2..Min(#s, #cofsR12)]] : s in ym1seq];
+
+// Find a basis of the annihilating differentials mod 7.
+intR21_7 := [GF(7)!(i/7) : i in integralsR21];
+intR22_7 := [GF(7)!(i/7) : i in integralsR22];
+intR11_7 := [GF(7)!(i/7) : i in integralsR11];
+intR12_7 := [GF(7)!(i/7) : i in integralsR12];
+
+matm2 := Matrix([[intR21_7[i], intR22_7[i]] : i in [1..4]]);
+matm1 := Matrix([[intR11_7[i], intR12_7[i]] : i in [1..4]]);
+
+kermatm2 := KernelMatrix(matm2); assert Nrows(kermatm2) eq 2;
+kermatm1 := KernelMatrix(matm1); assert Nrows(kermatm1) eq 2;
+
+printf "A basis of the image mod 7 of the annihilating differentials is\n";
+printf "  for J₋₂:  " ;
+for i := 1 to 2 do
+  printf "(%o) dx/2y  ", &+[(Integers()!kermatm2[i, j])*x^(j-1) : j in [1..4]];
+  if i eq 1 then printf "and  "; else printf "\n"; end if;
+end for;
+printf "  for J₋₁:  ";
+for i := 1 to 2 do
+  printf "(%o) dx/2y  ", &+[(Integers()!kermatm1[i, j])*x^(j-1) : j in [1..4]];
+  if i eq 1 then printf "and  "; else printf "\n"; end if;
+end for;
+
+// Compute a basis of differentials over ℚ₇ for J₋₂.
+matm2Q7 := Matrix([[integralsR21[i]/7, integralsR22[i]/7] : i in [1..4]]);
+kermatm2Q7 := KernelMatrix(matm2Q7);
+
+// Compute the first few coefficients of the integral of the second differential.
+int_2nd_diff := [&+[ym2seq[k,j]*kermatm2Q7[2,k] + O(Q7!7^3) : k in [1..4]] : j in [2..5]];
+
+printf "\nThe integral of the second differential for J₋₂ is given by\n";
+printf "  I(t) = ";
+for j := 1 to 4 do
+  printf "(%o)*t", int_2nd_diff[j];
+  if j gt 1 then printf "^%o", j; end if;
+  printf " + ";
+end for;
+printf "O(t^5) .\n\n\n";
+
+
+// =========
+
+printf "SECTION 9\n";
+printf "=========\n\n";
+
+// The sextic fields and the corresponding indices
+L6seq := [
+  <NumberField(x^6 + 3*x^5 - 10*x^3 + 12*x - 4),   [22]>,         // 54a1
+  <NumberField(x^6 - 2*x^5 - 6*x - 3),             [6, 23]>,      // 96a1
+  <NumberField(x^6 - 10*x^3 - 6*x + 5),            [15, 21, 24]>, // 864a1
+  <NumberField(x^6 + 10*x^3 + 24*x + 5),           [5, 9, 13]>,   // 864b1
+  <NumberField(x^6 + 10*x^3 - 15*x^2 + 18*x - 10), [8, 14, 16]>   // 864c1
+];
+
+OLs := [LLL(Integers(e[1])) : e in L6seq];
+
+// All these fields have trivial class group
+assert forall{O : O in OLs | #ClassGroup(O) eq 1};
+// and signature 2, 2.
+assert forall{e : e in L6seq | a eq 2 and b eq 2 where a, b := Signature(e[1])};
+printf "We have verified that the sextic fields have trivial class group\n";
+printf "  and signature (2,2).\n\n";
+
+// Extract the binaary form given by projecting the coefficients of pol to the j-th coefficient
+// with respect to the Q-basis of L that Magma uses.
+cof := func<pol, j | Parent(X)!&+[Eltseq(cs[i])[j]*ms[i] : i in [1..#ms]]
+                       where cs, ms := CoefficientsAndMonomials(pol)
+                       where L := BaseRing(Parent(pol))>;
+
+// The norm of a binary form over a finite extension of the rationals
+norm := func<p | Determinant(Matrix([[cof(L.1^(j-1)*p, i) : j in [1..Degree(L)]] : i in [1..Degree(L)]]))
+                   where L := BaseRing(Parent(p))>;
+
+// Factor a degree 12 form over a sextic field L.
+// We assume that it factors as a quadratic and a degree 10 form.
+// This returns primitive binary forms f1 (of degree 2) and f2 (of degree 10)
+// over the sextic field and an integer g such that pol = g * f1 * f2
+// (and pol = +-g * N_{L/Q}(f1)).
+function factor_form(pol, i)
+  // i = index in L6seq and OLs
+  L := L6seq[i,1];
+  OL := OLs[i];
+  polL := ChangeRing(pol, L);
+  fact := Factorization(polL);
+  assert #fact eq 2 and Degree(fact[1,1]) eq 2 and Degree(fact[2,1]) eq 10;
+  _, gen1 := IsPrincipal(ideal<OL | Coefficients(fact[1,1])>);
+  _, gen2 := IsPrincipal(ideal<OL | Coefficients(fact[2,1])>);
+  f1 := 1/gen1 * fact[1,1];
+  f2 := 1/gen2 * fact[2,1];
+  g := GCD(ChangeUniverse(Coefficients(pol), Integers()));
+  c := OL!ExactQuotient(polL, g*f1*f2);
+  assert IsUnit(c);
+  f1 *:= c;
+  c1 := ExactQuotient(pol, g*norm(f1));
+  assert c1 in {-1, 1};
+  return f1, f2, g;
+end function;
+
+printf "\nObtaining factorization (deg 2)*(deg 10)...\n";
+time
+factorseq := [[* <f1, f2, g> where f1, f2, g := factor_form(trips[j,3], i) : j in L6seq[i,2] *] : i in [1..#L6seq]];
+// Note: g = 4 for 54a1, g = 3 for 96a1, else g = 1.
+
+fs := &cat factorseq; // one flattened list
+OLs1 := &cat[[OLs[i] : j in [1..#factorseq[i]]] : i in [1..#OLs]]; // parallel sequence of OL's
+
+idx := &cat[e[2] : e in L6seq]; // the relvant indices
+assert Set(idx) eq i4; // check that these are the remaining ones
+// Sanity check: we really have factorizations of hᵢ.
+assert forall{i : i in [1..#idx] | Parent(fs[i,1])!trips[idx[i],3] eq fs[i,1]*fs[i,2]*fs[i,3]};
+
+// The resultant of two binary forms (assuming they both don't vanish at infinity)
+res := func<p, q | Resultant(Evaluate(p, [P.1,1]), Evaluate(q, [P.1,1]))
+                     where P := PolynomialRing(BaseRing(Parent(p)))>;
+assert forall{f : f in fs | Evaluate(f[1], [1,0]) ne 0 and Evaluate(f[2], [1,0]) ne 0};
+assert forall{f : f in fs | PrimeDivisors(Integers()!Norm(res(f[1]*f[3], f[2]))) eq [2, 3, 5]};
+printf "\nWe have verified that the resultants are supported above {2,3,5}.\n\n";
+
+// The quadratic and the degree 10 factor in each of the factorizations.
+facts := [* [f[3]*f[1], f[2]] : f in fs *];
+
+// Using the 2-adic and (for 96a1) the 3-adic restrictions on u and v, we can show
+// that any primitive solution coming from one of the 12 forms considered here
+// must result in the degree 10 factor (as in factorseq[i,j,2] for suitable i, j)
+// being a unit times a fifth power.
+
+function check_val_eq_0(pol, p)
+  // Check that all integral values of pol have p-adic valuation zero.
+  vals := [Valuation(c, p) : c in Coefficients(pol)];
+  return vals[1] eq 0 and forall{i : i in [2..#vals] | vals[i] gt 0};
+end function;
+
+function check_5_dvd_val(pol, pr)
+  // Check that all values of pol on 𝒪ᵥ have valuation divisible by 5 (v = pr).
+  v0 := Valuation(Coefficient(pol, 0), pr);
+  vv := Min([Valuation(Coefficient(pol, i), pr) : i in [1..Degree(pol)]]);
+  return vv gt v0 and IsDivisibleBy(v0, 5);
+end function;
+
+
+// For all indices i in idx except i = 22, hᵢ(u,v) is odd for all relevant (u,v).
+for i in idx do
+  if i ne 22 then
+    res2 := hasprimitivesolution(trips[i], 2);
+    assert forall{s : s in res2 | check_val_eq_0(Evaluate(trips[i,3], s), 2)};
+  end if;
+end for;
+
+// For i = 22, check that at least one of the two factors has valuation
+// divisible by 5, for each prime above 2.
+res2 := hasprimitivesolution(trips[22], 2);
+j22 := Position(idx, 22);
+L := BaseRing(Parent(facts[j22,1])); PL := PolynomialRing(L);
+prs := [e[1] : e in Decomposition(Integers(L), 2)];
+assert forall{s : s in res2, pr in prs
+                | exists{pol : pol in facts[j22] | check_5_dvd_val(Evaluate(pol, ss), pr)}
+                  where ss := ChangeUniverse(s, PL)};
+
+// For all indices i in idx except i = 6, 23,
+// hᵢ(u,v) is not divisible by 3 for all relevant (u,v).
+for i in idx do
+  if i ne 6 and i ne 23 then
+    res3 := hasprimitivesolution(trips[i], 3);
+    assert forall{s : s in res3 | check_val_eq_0(Evaluate(trips[i,3], s), 3)};
+  end if;
+end for;
+
+// For i = 6, 23, check that at least one of the two factors has valuation
+// divisible by 5, for each prime above 3.
+for i in [6, 23] do
+  res3 := hasprimitivesolution(trips[i], 3);
+  ji := Position(idx, i);
+  L := BaseRing(Parent(facts[ji,1])); PL := PolynomialRing(L);
+  prs := [e[1] : e in Decomposition(Integers(L), 3)];
+  assert forall{s : s in res3, pr in prs
+                  | exists{pol : pol in facts[ji] | check_5_dvd_val(Evaluate(pol, ss), pr)}
+                    where ss := ChangeUniverse(s, PL)};
+end for;
+
+// Check that any solution (for one of the 12 forms considered here) must have
+// the value of the degree 12 form at (u,v) be a unit mod the ramified prime
+// ideal above 5 in the sextic field.
+
+PP5<u,v> := PolynomialRing(GF(5), 2);
+
+function check_val5(pol)
+  // verify that the values of pol at 5-adic integers all have 5-adic valuation
+  // not divisible by 5
+  vals := [Valuation(c, 5) : c in Coefficients(pol)];
+  v0 := vals[1];
+  return not IsDivisibleBy(v0, 5) and forall{i : i in [2..#vals] | v0 lt vals[i]};
+end function;
+
+for i in idx do
+  fact := Factorization(PP5!trips[i,3]);
+//   printf "  form no. %o:\n", i;
+  res := true;
+  for e in fact do
+    if Degree(e[1]) eq 1 and e[2] gt 1 then
+      if MonomialCoefficient(e[1], u) eq 1 then
+        c := Integers()!MonomialCoefficient(e[1], v);
+        flag := check_val5(Evaluate(trips[i,3], [5*x - c, 1]));
+      else
+        flag := check_val5(Evaluate(trips[i,3], [1, 5*x]));
+      end if;
+//       printf "    factor %o --> %o\n", e[1], flag;
+      res and:= flag;
+    end if;
+  end for;
+  assert res;
+end for;
+
+printf "We have verified that the degree 10 factor Hᵢ(u,v)\n";
+printf "must be a fifth power times a unit.\n\n";
+
+
+// We will now try to eliminate as many of the units (mod fifth powers) as possible
+// by a sieving procedure.
+
+// Let p > 5 be a prime and let p_1, ..., p_r be the prime ideals above p in the sextic field L.
+// Set V_p = \prod_{j=1}^r (OL/p_j)^x/fifth powers; this is an F_5-vector space.
+// For all (u, v) in F_p² \ {(0,0)}, find the image of (deg 10)(u, v) in V_p
+// (if the value is in p_j for some j, include all entries in that component);
+// call the resuting set S_p. Then check which of the still possible units
+// map into S_p and only keep these.
+
+// We can do a similar sieve at 5, computing modulo 5².
+function sieve5(cands, form)
+  // cands: Set of units of OL
+  // form: primitive degree 10 form with coefficients in OL
+  // returns the subset of cands that is compatible with evaluating the form mod 5^2
+  if IsEmpty(cands) then return cands; end if;
+  OL := Universe(cands);
+  dec := Decomposition(OL, 5);
+  Rs := [<R, mR> where R, mR := quo<OL | e[1]^(2*e[2])> : e in dec];
+  Gs := [<G, mG> where G, mG := UnitGroup(e[1]) : e in Rs];
+  A, inj, proj := DirectSum([e[1] : e in Gs]);
+  A5, qA5 := quo<A | 5*A>;
+  function entry(x, i) // x in OL, i index in Rs/Gs
+    y := Rs[i,2](x); // x in OL/pr^2
+    if not IsUnit(y) then
+      if dec[i,2] gt 1 then // cannot vanish mod the ramified prime
+        return {Gs[i,1]|};
+      else
+        return Set(Gs[i,1]);
+      end if;
+    else
+      return {y @@ Gs[i,2]};
+    end if;
+  end function;
+  function toA5(x) // x in OL
+    res := {A5| 0};
+    for i := 1 to #Rs do
+      s := entry(x, i);
+      res := {r + qA5(inj[i](a)) : r in res, a in s};
+    end for;
+    return res;
+  end function;
+  // Note that scaling (u,v) multiplies the image by a tenth power, so gives the same result in V
+  // ==> it is sufficient to use representatives of P¹(ℤ/25ℤ).
+  uvseq := [[1,0]] cat [[u,5] : u in [1..4]] cat [[u,1] : u in [0..24]];
+  function evform(uv)
+    return toA5(OL!Evaluate(form, uv));
+  end function;
+  S := &join[evform(uv) : uv in uvseq];
+  vprintf User1: "p = 5: #S_p = %o, #V_p = %o\n", #S, #A5;
+  if #S eq #A5 then return cands; end if;
+  // check units
+  return {c : c in cands | toA5(c) subset S};
+end function;
+
+function make_log5(F)
+  // F: a finite field s.t. #F = 1 mod 5
+  // returns a surjective homomorphism F \ {0} --> ℤ/5
+  assert #F mod 5 eq 1;
+  n := ExactQuotient(#F-1, 5);
+  G, mG := MultiplicativeGroup(F);
+  gen := mG(G.1)^n;
+  m1 := pmap<F -> GF(5) | [<gen^j, GF(5)!j> : j in [0..4]]>;
+  return func<x | m1(x^n)>;
+end function;
+
+function sieve1(cands, form, p)
+  // cands: Set of units of OL
+  // form: primitive degree 10 form with coefficients in OL
+  // p: a prime > 5
+  // returns the subset of cands that is compatible with evaluating the form mod p
+  assert IsPrime(p);
+  OL := Universe(cands);
+  dec := Decomposition(OL, p); // find the p_j
+  prs := [e[1] : e in dec | Norm(e[1]) mod 5 eq 1]; // only keep those with #(OL/p_j) = 1 mod 5
+  Gs := [<F, mF, make_log5(F)> where F, mF := ResidueClassField(pr) : pr in prs];
+  V := KSpace(GF(5), #prs);
+  // find S_p
+  function entry(x, e) // x in OL, e an entry in Gs
+    y := e[2](x); // map x to F = OL/pr
+    if y eq 0 then
+      return Set(GF(5)); // no restriction in this component
+    else
+      return {e[3](y)}; // compute discrete log mod 5
+    end if;
+  end function;
+  function toV(x)
+    seqs := {[GF(5)|]};
+    for e in Gs do
+      s := entry(x, e);
+      seqs := {Append(seq, a) : seq in seqs, a in s};
+    end for;
+    return {V!s : s in seqs};
+  end function;
+  // Note that scaling (u,v) multiplies the image by a tenth power, so gives the same result in V
+  // ==> it is sufficient to use representatives of P¹(F_p).
+  S := toV(OL!Evaluate(form, [1,0])) join &join[toV(OL!Evaluate(form, [u,1])) : u in [0..p-1]];
+  vprintf User1: "p = %o: #S_p = %o, #V_p = %o\n", p, #S, #V;
+  if #S eq #V then return cands; end if;
+  // check units
+  old := #cands;
+  cands := {c : c in cands | toV(c) subset S};
+  if #cands eq old then
+    vprintf User1: "p = 5: no improvement.\n";
+  else
+    vprintf User1: "p = 5: now #cands = %o.\n", #cands;
+  end if;
+  return cands;
+end function;
+
+function cands0(OL)
+  U, mU := UnitGroup(OL);
+  assert Invariants(U) eq [2,0,0,0];
+  return {mU(a*U.2 + b*U.3 + c*U.4) : a, b, c in [-2..2]};
+end function;
+
+function sieve(OL, form : bound := 1000)
+  // OL: ring of integers of one of the sextic fields
+  // form: a degree 10 form with coefficiens in OL
+  // bound: a bound for the primes to be used
+  used_p := [Integers()|];
+  cands := cands0(OL);
+  for p in PrimesInInterval(7, bound) do
+    if #[e : e in Decomposition(OL, p) | Norm(e[1]) mod 5 eq 1] gt 0 then
+      old := #cands;
+      cands := sieve1(cands, form, p);
+      if #cands eq old then
+        vprintf User1: "p = %o: no improvement.\n", p;
+      else
+        vprintf User1: "p = %o: now #cands = %o.\n", p, #cands;
+        Append(~used_p, p);
+      end if;
+    end if;
+    if IsEmpty(cands) then break; end if;
+  end for;
+  return cands, used_p;
+end function;
+
+function sieve_check(OL, form, plist)
+  // OL: ring of integers of one of the sextic fields
+  // form: a degree 10 form with coefficiens in OL
+  // plist: a sequence of primes to be used
+  U, mU := UnitGroup(OL);
+  assert Invariants(U) eq [2,0,0,0];
+  cands := {mU(a*U.2 + b*U.3 + c*U.4) : a, b, c in [-2..2]};
+  for p in plist do
+    old := #cands;
+    cands := sieve1(cands, form, p);
+    if #cands eq old then
+      vprintf User1: "p = %o: no improvement.\n", p;
+    else
+      vprintf User1: "p = %o: now #cands = %o.\n", p, #cands;
+    end if;
+    if IsEmpty(cands) then break; end if;
+  end for;
+  return cands;
+end function;
+
+// Use primes 11, 31 and 101 and the check mod 25.
+remaining := [* sieve5(sieve_check(OLs1[i], f[2], [11, 31, 101]), f[2]) where f := fs[i] : i in [1..#fs] *];
+
+// Check that at most one unit remains in each case.
+// (Note: using more primes does not improve this result.)
+assert [#r : r in remaining] eq [1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1];
+excluded := {idx[i] : i in [1..#idx] | IsEmpty(remaining[i])};
+
+printf "\nWe could exclude the forms with index in %o.\n\n", excluded;
+printf "For each of the other forms, only one possible unit remains.\n\n";
+
+// Check the equivalence for the pairs {6, 23}, {5, 13} and {14. 16}.
+
+// {6, 23}: index 2 and 3 in idx
+assert idx[2] eq 6 and idx[3] eq 23;
+L := L6seq[2,1]; P2L := Parent(fs[2,2]);
+flag, qu := IsDivisibleBy(Evaluate(fs[2,2], [P2L.1, 2*P2L.2]), P2L!fs[3,2]); assert flag;
+qu := L!qu;
+// The constant factor is a unit times a fifth power.
+assert forall{e : e in Factorization(qu*Integers(L)) | IsDivisibleBy(e[2], 5)};
+printf "Verified the equivalence of the equations for i = 6 and i = 23.\n";
+
+// {5, 13}: index 7 and 9 in idx
+assert idx[7] eq 5 and idx[9] eq 13;
+L := L6seq[4,1]; P2L := Parent(fs[7,2]);
+flag, qu := IsDivisibleBy(Evaluate(fs[7,2], [P2L.1, -P2L.1-2*P2L.2]), P2L!fs[9,2]); assert flag;
+qu := L!qu;
+// The constant factor is a unit times a fifth power.
+assert forall{e : e in Factorization(qu*Integers(L)) | IsDivisibleBy(e[2], 5)};
+printf "Verified the equivalence of the equations for i = 5 and i = 13.\n";
+
+// {14, 16}: index 11 and 12 in idx
+assert idx[11] eq 14 and idx[12] eq 16;
+L := L6seq[5,1]; P2L := Parent(fs[11,2]);
+flag, qu := IsDivisibleBy(Evaluate(fs[11,2], [P2L.1+P2L.2, P2L.1-P2L.2]), P2L!fs[12,2]); assert flag;
+qu := L!qu;
+// The constant factor is a unit times a fifth power.
+assert forall{e : e in Factorization(qu*Integers(L)) | IsDivisibleBy(e[2], 5)};
+printf "Verified the equivalence of the equations for i = 14 and i = 16.\n";
+
+printf "\n\n--- THE END ---\n\n";
