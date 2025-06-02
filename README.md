@@ -62,3 +62,17 @@ contains Magma programs related to the paper.
 * [SelChabDyn-examples.magma](SelChabDyn/SelChabDyn-examples.magma):
   this verifies the results in Section 3.
 
+## Diagonal genus 5 curves, elliptic curves over ${\mathbb Q}(t)$, and diophantine quintuples
+
+([arXiv](arxiv.org/abs/1711.00500))
+
+* [diophtuples.magma](DiophQuintuples/diophtuples.magma):
+  this implements the algorithm described in Section 2 (assuming GRH)
+  for curves arising from diophantine quadruples.
+
+* [diophtuples-verify.magma](DiophQuintuples/diophtuples-verify.magma):
+  this verifies the results (if feasible, without assuming GRH),
+  given information on the elliptic curve that gives a ``good'' rank bound.
+
+* [ellQt.magma](DiophQuintuples/ellQt.magma):
+  this implements the algorithm described in Section 5.

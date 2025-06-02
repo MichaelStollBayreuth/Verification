@@ -1,0 +1,644 @@
+// Magma functions for the paper
+// "Diagonal genus 5 curves, elliptic curves over \Q(t), and rational diophantine quintuples"
+// by Michael Stoll
+//
+// This file contains the functions that allow to verify the computations
+// mentioned at the end of Section 3 without assuming GRH
+
+// This is essentially the same as in diophtuples.magma,
+// except that the main function (extendverify below) also
+// requires the combinatorial data identifying the curve F_{T,\xi}
+// and a flag whether it should look at the 2-isogenous curve.
+
+P<x> := PolynomialRing(Rationals());
+
+function ellipticcurves(aseq)
+  // aseq = [a1, a2, a3, a4]
+  a,b,c,d := Explode(aseq);
+  Pr3 := ProjectiveSpace(Universe(aseq), 3);
+  u1,u2,u3,u4 := Explode([Pr3.i : i in [1..4]]);
+  Cseq := [Curve(Pr3, [b*u2^2-c*u1^2-(b-c)*u4^2, b*u3^2-d*u1^2-(b-d)*u4^2]),
+           Curve(Pr3, [a*u2^2-c*u1^2-(a-c)*u4^2, a*u3^2-d*u1^2-(a-d)*u4^2]),
+           Curve(Pr3, [a*u2^2-b*u1^2-(a-b)*u4^2, a*u3^2-d*u1^2-(a-d)*u4^2]),
+           Curve(Pr3, [a*u2^2-b*u1^2-(a-b)*u4^2, a*u3^2-c*u1^2-(a-c)*u4^2]),
+           Curve(Pr3, [(c-a)*u2^2-(c-b)*u1^2-(b-a)*u3^2,
+                       (d-a)*u2^2-(d-b)*u1^2-(b-a)*u4^2])];
+  resseq := [**];
+  aaseq := Append(aseq, 0);
+  for i := 1 to #Cseq do
+    C := Cseq[i];
+    E1, toE1 := EllipticCurve(C, C![1,1,1,1]);
+    as := [aaseq[j] : j in [1..5] | j ne i];
+    part := [as[1]*as[2] + as[3]*as[4],
+             as[1]*as[3] + as[2]*as[4],
+             as[1]*as[4] + as[2]*as[3]];
+    E := EllipticCurve(HyperellipticCurve(&*[Polynomial([p,1]) : p in part]));
+    flag, toE := IsIsomorphic(E1, E);
+    assert flag;
+    Append(~resseq, <C, E, Expand(toE1*toE)>);
+  end for;
+  return resseq;
+end function;
+
+function sqfp(n)
+  s := SquarefreeFactorization(Numerator(n)*Denominator(n));
+  return s;
+end function;
+
+Pr1Q := ProjectiveSpace(Rationals(), 1);
+
+function genus5curve(aseq)
+  a,b,c,d := Explode(aseq);
+  Pr4<u1,u2,u3,u4,u0> := ProjectiveSpace(Universe(aseq), 4);
+  return Curve(Pr4, [b*u1^2-a*u2^2+(a-b)*u0^2,
+                     c*u1^2-a*u3^2+(a-c)*u0^2,
+                     d*u1^2-a*u4^2+(a-d)*u0^2]);
+end function;
+
+// construct elliptic curve over degree 4 field given the combinatorial data
+function ellcdeg4(aseqn, pt, data)
+  // aseqn = [a1,a2,a3,a4,0] coprime integers
+  // pt = point on C determining the relevant twists
+  // data = [{i,j}, {k,l}, {i,k}] or [{i,j}, {i,k}], specifies the curve
+  u := [R.i : i in [1..5]] where R := CoordinateRing(Ambient(Curve(pt)));
+  function param(i,j,k)
+    // give parameterization of (a_j-a_k) u_i^2 + (a_k-a_i) u_j^2 + (a_i-a_j) u_k^2 = 0
+    // in terms of dehomogenized binary quadratic forms
+    a := aseqn[j]-aseqn[k]; b := aseqn[k]-aseqn[i]; c := aseqn[i]-aseqn[j];
+    par := [b*(x+1)^2 + c*x^2, c + a*(x+1)^2, a*x^2 + b];
+    assert a*par[1]^2 + b*par[2]^2 + c*par[3]^2 eq 0;
+    return par, b/a * (u[j]+u[k])/(u[i]+u[k]);
+  end function;
+  function rad(i,j,k)
+    // give coefficient of -u_k^2 in *u_i^2 = u_j^2 - *u_k^2
+    return (aseqn[j]-aseqn[i])/(aseqn[k]-aseqn[i]);
+  end function;
+  if #data eq 3 then
+    // case 1
+    pair1 := data[1];
+    pair2 := data[2];
+    i := Rep(pair1 meet data[3]);
+    j := Rep(Exclude(pair1, i));
+    k := Rep(pair2 meet data[3]);
+    l := Rep(Exclude(pair2, k));
+    m := Rep({1..5} diff {i,j,k,l});
+    par, xcoord := param(j,l,m);
+    par := [p/g : p in par]
+            where g := GCD(&cat[ChangeUniverse(Coefficients(p), Integers()) : p in par]);
+    rad1 := rad(k,m,l); rad2 := rad(i,m,j);
+    r1 := sqfp(rad1); r2 := sqfp(rad2);
+    if r1 eq 1 or r2 eq 1 or r1 eq r2 then
+      // K is not of degree 4; skip
+      printf "ellcdeg4: %o, %o --> smaller degree fields (sqrt(%o), sqrt(%o))\n", pair1, pair2, r1, r2;
+      return <>;
+    end if;
+    K := AbsoluteField(ext<Rationals() | x^2 - r1, x^2 - r2>);
+    X := PolynomialRing(K).1;
+    sqrt1 := Roots(X^2 - rad1)[1,1]; sqrt2 := Roots(X^2 - rad2)[1,1];
+    parK := [Evaluate(p, X) : p in par];
+    pol := Denominator(s1)*Denominator(s2)*(parK[3] - sqrt1*parK[2])*(parK[3] - sqrt2*parK[1])
+            where _, s1 := IsSquare(rad1/r1) where _, s2 := IsSquare(rad2/r2);
+    ptx := Evaluate(xcoord, Eltseq(pt));
+    polpt := Evaluate(pol, ptx);
+    HE := HyperellipticCurve(polpt*pol);
+    toHE := func<ptC | Setseq(Points(HE, Evaluate(Denominator(xcoord), Eltseq(ptC)) eq 0
+                                        select Infinity()
+                                        else Evaluate(xcoord, Eltseq(ptC))))>;
+    HEcov := map<HE -> Pr1Q | [HE.1, HE.3]>;
+    return <HE, toHE, HEcov, xcoord>;
+  else
+    assert #data eq 2;
+    // case 2
+    pair1 := data[1];
+    pair2 := data[2];
+    i := Rep(pair1 meet pair2);
+    j := Rep(pair1 diff {i});
+    k := Rep(pair2 diff {i});
+    l, m := Explode(Setseq({1..5} diff (pair1 join pair2)));
+    par, xcoord := param(i,l,m);
+    par := [p/g : p in par]
+            where g := GCD(&cat[ChangeUniverse(Coefficients(p), Integers()) : p in par]);
+    rad1 := rad(j,l,m); rad2 := rad(k,l,m);
+    r1 := sqfp(rad1); r2 := sqfp(rad2);
+    if r1 eq 1 or r2 eq 1 or r1 eq r2 then
+      // K is not of degree 4; skip
+      printf "ellcdeg4: %o, %o --> smaller degree fields (sqrt(%o), sqrt(%o))\n", pair1, pair2, r1, r2;
+      return <>;
+    end if;
+    K := AbsoluteField(ext<Rationals() | x^2 - r1, x^2 - r2>);
+    X := PolynomialRing(K).1;
+    sqrt1 := Roots(X^2 - rad1)[1,1]; sqrt2 := Roots(X^2 - rad2)[1,1];
+    parK := [Evaluate(p, X) : p in par];
+    pol := Denominator(s1)*Denominator(s2)*(parK[2] - sqrt1*parK[3])*(parK[2] - sqrt2*parK[3])
+            where _, s1 := IsSquare(rad1/r1) where _, s2 := IsSquare(rad2/r2);
+    ptx := Evaluate(xcoord, Eltseq(pt));
+    polpt := Evaluate(pol, ptx);
+    HE := HyperellipticCurve(polpt*pol);
+    toHE := func<ptC | Setseq(Points(HE, Evaluate(Denominator(xcoord), Eltseq(ptC)) eq 0
+                                          select Infinity()
+                                          else Evaluate(xcoord, Eltseq(ptC))))>;
+    HEcov := map<HE -> Pr1Q | [HE.1, HE.3]>;
+    return <HE, toHE, HEcov, xcoord>;
+  end if;
+end function;
+
+// the following is provided so that we can print a description
+// of the octic field arising in the computation of the 2-Selmer group
+function sqrtgens(K)
+  // K: a multi-quadratic number field
+  // returns a sequence of squarefree integers whose square roots generate K
+  qf := [e[1] : e in Subfields(K, 2)];
+  ds := [sqfp(Discriminant(DefiningPolynomial(F))) : F in qf];
+  result := [Integers()|];
+  group := {1};
+  while not IsEmpty(ds) do
+    _, pos := Min([Abs(d) : d in ds]);
+    d := ds[pos];
+    Append(~result, d);
+    group join:= {sqfp(d*g) : g in group};
+    ds := [d : d in ds | d notin group];
+  end while;
+  return result;
+end function;
+
+// this does the printing, given the elliptic curve
+procedure print2descfield(E)
+  T, mT := TwoTorsionSubgroup(E);
+  assert #T ge 2;
+  K := BaseField(E);
+  if #T eq 4 then
+    gen := sqrtgens(K);
+  else
+    fact := Factorization(DivisionPolynomial(E, 2));
+    assert #fact eq 2 and Degree(fact[2,1]) eq 2;
+    L := AbsoluteField(ext<K | fact[2,1]>);
+    gen := sqrtgens(L);
+  end if;
+  printf "      field for 2-descent: Q(";
+  for i := 1 to #gen do
+    printf "sqrt(%o)%o", gen[i], i lt #gen select ", " else ")";
+  end for;
+  printf "\n";
+end procedure;
+
+// compute lower and upper bounds for the Mordell-Weil rank
+function rank_bound(E, ptsE, Fields, isog)
+  // isog = true means look at 2-isogenous curve(s)
+  printf "    computing reduced basis...\n";
+  time lowbd := #ReducedBasis(ptsE);
+  printf "    lower bound from known points = %o\n", lowbd;
+  if lowbd ge 4 then
+    printf "    lower bound is too large ==> abort\n";
+    return 1000, lowbd;
+  end if;
+  T, mT := TwoTorsionSubgroup(E);
+  assert #T ge 2; // can be larger!
+  if not isog then
+    print2descfield(E);
+    printf "    computing 2-Selmer group...\n";
+    time SelE, mSelE := TwoSelmerGroup(E : Fields := Fields,
+                                          Hints := {pt[1]/pt[3] : pt in ptsE | pt[3] ne 0});
+    tors2 := #Invariants(TwoTorsionSubgroup(E));
+    rkSel := #Invariants(SelE);
+    rkbd := rkSel - tors2;
+    printf "    rk Sel = %o, rk E[2] = %o ==> rank bound is %o\n", rkSel, tors2, rkbd;
+    return rkbd, lowbd;
+  else
+    // find isogenous curves
+    printf "    computing 2-Selmer group of 2-isogenous curve...\n";
+    for t in {t : t in T | t ne T!0} do
+      Ei, toEi := IsogenyFromKernel(E, Polynomial([-mT(t)[1], 1]));
+      print2descfield(Ei);
+      ptsEi := Saturation([toEi(b) : b in ptsE], 2);
+      time SelEi, mSelEi := TwoSelmerGroup(Ei : Hints := {pt[1]/pt[3] : pt in ptsEi | pt[3] ne 0});
+      tors2 := #Invariants(TwoTorsionSubgroup(Ei));
+      rkSel := #Invariants(SelEi);
+      rkbd := rkSel- tors2;
+      printf "    rk Sel = %o, rk E[2] = %o ==> rank bound is now %o\n", rkSel, tors2, rkbd;
+    end for;
+  end if;
+  return rkbd, lowbd;
+end function;
+
+// Elliptic Curve Chabauty
+function ECC(E, ptsE, rkbd, Ecov)
+  bas := ReducedBasis(ptsE);
+  printf "    known points generate subgroup of rank %o\n", #bas;
+  if #bas eq rkbd then
+    printf "    so we know a subgroup of finite index\n\n";
+    T, mT := TorsionSubgroup(E);
+    lent := #Invariants(T);
+    MW := AbelianGroup(Invariants(T) cat [0 : b in bas]);
+    MWtoE := map<MW -> E | g :-> mT(T!s[1..lent]) + &+[s[lent+i]*bas[i] : i in [1..#bas]]
+                                where s := Eltseq(g)>;
+    satbound := 1;
+    while true do
+      printf "    run Chabauty...\n";
+      time MWset, N := Chabauty(MWtoE, Ecov);
+      badp := PrimeDivisors(N);
+      if IsEmpty(badp) or Max(badp) le satbound then
+        break;
+      end if;
+      printf "    need to saturate at primes in %o\n", [p : p in badp | p gt satbound];
+      reg := Regulator(bas);
+      satbound := Max(badp);
+      time bas := ReducedBasis(Saturation(bas, satbound));
+      index := Round(Sqrt(reg/Regulator(bas)));
+      if index eq 1 then
+        printf "    group was already saturated\n";
+        break;
+      end if;
+      printf "    group enlarged by index %o\n", index;
+    end while;
+    xcsE := {Pr1Q!Ecov(MWtoE(g)) : g in MWset};
+    printf "    found %o x-coordinates on E\n", #xcsE;
+    return xcsE, true;
+  else
+    printf "    so we are missing generators.\n";
+    return {}, false;
+  end if;
+end function;
+
+// The main function.
+// aseq = [a_1, a_2, a_3, a_4] is a rational diophantine quadruple
+// data identifies a curve F_{T,\xi}
+// isog specifies whether to look at the 2-isogenous curve for the rank bound
+function extendverify(aseq, data, isog)
+  // some checks
+  assert #aseq eq 4;
+  ChangeUniverse(~aseq, Rationals());
+  aseq0 := Append(aseq, 0);
+  a,b,c,d := Explode(aseq);
+  flag, r12 := IsSquare(a*b+1); assert flag;
+  flag, r13 := IsSquare(a*c+1); assert flag;
+  flag, r14 := IsSquare(a*d+1); assert flag;
+  flag, r23 := IsSquare(b*c+1); assert flag;
+  flag, r24 := IsSquare(b*d+1); assert flag;
+  flag, r34 := IsSquare(c*d+1); assert flag;
+
+  printf "Trying to find all extensions of the diophantine quadruple\n";
+  printf "  (%o, %o, %o, %o)\n\n", a, b, c, d;
+  // regular extensions
+  abcd := a*b*c*d;
+  part1 := (a+b+c+d)*(abcd+1) + 2*(a*b*c + a*b*d + a*c*d + b*c*d);
+  part2 := 2*r12*r13*r14*r23*r24*r34;
+  ext1 := (part1 + part2)/(abcd-1)^2;
+  ext2 := (part1 - part2)/(abcd-1)^2;
+  assert forall{z : z in aseq | IsSquare(z*ext1 + 1) and IsSquare(z*ext2 + 1)};
+  printf "regular extensions:\n";
+  printf " %o  and  %o\n\n", ext1, ext2;
+
+  // scale aseq to get coprime integers
+  aseqn := [Integers()!(l*a) : a in aseq] where l := LCM([Denominator(a) : a in aseq]);
+  aseqn := [ExactQuotient(a, g) : a in aseqn] where g := GCD(aseqn);
+  Append(~aseqn, 0);
+  bad := Sort(Setseq(&join[Set(PrimeDivisors(aseqn[j]-aseqn[i]))
+                            : j in [i+1..5], i in [1..5]]));
+  printf "bad primes:\n  %o\n", bad;
+
+  printf "\nconstruct the elliptic curves...\n";
+  Eseq := ellipticcurves(ChangeUniverse(aseqn, Rationals()));
+  SelZ, mSelZ := pSelmerGroup(2, {p*Integers() : p in bad});
+  SelE, injsE, projsE := DirectProduct([SelZ, SelZ, SelZ]);
+  a,b,c,d := Explode(aseqn);
+  // note roots of right hand sides of the elliptic curves
+  // order is imortant! (must be consistent with iseq and trips below)
+  rtseq := [[-b*c, -b*d, -c*d], [-a*c, -a*d, -c*d], [-a*b, -a*d, -b*d],
+            [-a*b, -a*c, -b*c], [-a*b-c*d, -a*c-b*d, -a*d-b*c]];
+  assert forall{i : i in [1..5] | Set(rtseq[i]) eq {r[1] : r in Roots(Polynomial([a6,a4,a2,1]))}
+                                     where a1,a2,a3,a4,a6 := Explode(aInvariants(Eseq[i][2]))};
+  printf "find their 2-Selmer groups...\n";
+  imEseq := [];
+  for i := 1 to 5 do
+    E := Eseq[i,2];
+    printf "  elliptic curve E_%o:\n", i;
+    Sel, mSel := TwoSelmerGroup(E);
+    A := Domain(mSel);
+    // need to map A to algebra coming directly from E
+    maxrt := Max(rtseq[i]);
+    scale := (3*maxrt - &+rtseq[i])/Coefficient(Modulus(A), 2);
+    assert scale^3*Evaluate(Modulus(A), (x-maxrt)/scale) eq &*[x - r : r in rtseq[i]];
+    AtoSelE := map<A -> SelE | a :-> &+[injsE[j](mSelZ(Evaluate(f, (rtseq[i,j]-maxrt)/scale)))
+                                         : j in [1..3]]
+                                     where f := P!a>;
+    Append(~imEseq, sub<SelE | [AtoSelE(g @@ mSel) : g in Generators(Sel)]>);
+    printf "    rank bound = %o\n", #Invariants(Sel) - 2;
+//     time MW, MWtoE, flag1, flag2 := MordellWeilGroup(Eseq[i,2]);
+//     assert flag1 and flag2;
+//     printf "    rank = %o\n", #[inv : inv in Invariants(MW) | inv eq 0];
+//     Append(~MWseq, <MW, MWtoE>);
+  end for;
+  printf "\nconstruct image of product of E_i(Q) in H...\n";
+  // map a point to the 2-Selmer group of E
+  function toSelE(pt, rts)
+    if pt[3] eq 0 then
+      return SelE!0;
+    else
+      xs := [pt[1]/pt[3] - r : r in rts];
+      xs := [xc eq 0 select 0 else sqfp(xc) : xc in xs];
+      pos := Position(xs, 0);
+      if pos ne 0 then
+        xs[pos] := sqfp(&*[xc : xc in xs | xc ne 0]);
+      end if;
+      return &+[injsE[j](mSelZ(xs[j])) : j in [1..3]];
+    end if;
+  end function;
+  BigH, injsH, projsH := DirectProduct([SelE : i in [1..5]]);
+  H := sub<BigH | &cat[[injsH[i](g) : g in Generators(imEseq[i])] : i in [1..5]]>;
+  printf "H_0 has rank %o\n", #Invariants(H);
+
+  // set up genus 5 curve and points on it
+  C := genus5curve(aseq);
+  CtoH := map<C -> H | pt :-> &+[injsH[i](toSelE(Eseq[i,3](Eseq[i,1]![s[j] : j in [1..5] | j ne i]
+                                                            where s := Eltseq(pt)), rtseq[i]))
+                                  : i in [1..5]]>;
+  ptsC0 := [C![u1,u2,u3,u4,1] : u1, u2, u3, u4 in [1,-1]];
+  s1, s2, s3, s4 := Explode([s where _, s := IsSquare(1 + aseq[i]*ext1) : i in [1..4]]);
+  ptsC1 := [C![u1*s1,u2*s2,u3*s3,u4*s4,1] : u1, u2, u3, u4 in [1,-1]];
+  s1, s2, s3, s4 := Explode([s where _, s := IsSquare(1 + aseq[i]*ext2) : i in [1..4]]);
+  ptsC2 := [C![u1*s1,u2*s2,u3*s3,u4*s4,1] : u1, u2, u3, u4 in [1,-1]];
+  H1 := {CtoH(pt) : pt in ptsC0};
+  assert Set(sub<H | H1>) eq H1;
+  H1 := sub<H | H1>;
+  printf "H_1 has rank %o\n", #Invariants(H1);
+  Hq, toHq := quo<H | H1>;
+  H2a := {CtoH(pt) : pt in ptsC1};
+  H2b := {CtoH(pt) : pt in ptsC2};
+  // check H2a, H2b are cosets of H1
+  assert H2a eq {r + h : h in H1} where r := Rep(H2a);
+  assert H2b eq {r + h : h in H1} where r := Rep(H2b);
+  knownimage := {toHq(Rep(H1)), toHq(Rep(H2a)), toHq(Rep(H2b))};
+  // look for more points
+  printf "\nsearching for points on C...\n";
+  ptsC3 := PointSearch(C, 10^8);
+  ptsC3 := [pt : pt in ptsC3 | pt notin ptset] where ptset := Set(ptsC0) join Set(ptsC1) join Set(ptsC2);
+  if not IsEmpty(ptsC3) then
+    num := ExactQuotient(#ptsC3, 16);
+    printf "found %o additional orbit%o of points on C\n", num, num eq 1 select "" else "s";
+    for pt in [pt : pt in ptsC3 | forall{i : i in [1..5] | pt[i] ge 0}] do
+      Include(~knownimage, toHq(CtoH(pt)));
+    end for;
+  end if;
+  printf "known points give %o A-orbit%o in H_0\n", #knownimage, #knownimage eq 1 select "" else "s";
+  ptsCrep := [];
+  ptsC := Set(ptsC0 cat ptsC1 cat ptsC2 cat ptsC3);
+  for pt in [pt : pt in ptsC0 cat ptsC1 cat ptsC2 cat ptsC3 | forall{i : i in [1..5] | pt[i] ge 0}] do
+    if pt notin ptsCrep then
+      Append(~ptsCrep, pt);
+    end if;
+  end for;
+
+  // Compute hat{phi}-Selmer set of C:
+  // produce representatives of the descent functions
+  // note that scaling aseq scales them by squares, so we can work with aseqn
+  // also note that we can replace D/N by D*N
+  iseq := [[j : j in [1..5] | j ne i] : i in [1..5]];
+  Vseq := [&*[aseqn[s[j]] - aseqn[s[i]] : j in [i+1..4], i in [1..4]] : s in iseq]; // Vandermonde
+  P5<u1,u2,u3,u4,u5> := Ambient(C);
+  useq := [u1,u2,u3,u4,u5];
+  // the D_i
+  Dseq := [Determinant(Matrix(Parent(u1),
+                              [[1,1,1,1], aseqn[i], [a^2 : a in aseqn[i]], useq[i]]))
+             : i in iseq];
+  function trips(inds)
+    // coset representatives of Klein Four Group in S_4
+    return [inds, inds[[1,3,2,4]], inds[[1,4,2,3]]];
+  end function;
+  // normalize mod squares
+  function norm_sq(pol)
+    cs := ChangeUniverse(Coefficients(pol), Integers());
+    r, s := SquarefreeFactorization(GCD(cs));
+    return pol/s^2;
+  end function;
+  // tripseq[i] is the triple of functions on C whose square classes give the map
+  // to the i-th component of BigH
+  tripseq := [[norm_sq(Vseq[i]*Dseq[i]*((useq[t[1]]-useq[t[2]])/(aseqn[t[1]]-aseqn[t[2]])
+                                          + (useq[t[3]]-useq[t[4]])/(aseqn[t[3]]-aseqn[t[4]])))
+                : t in trips(iseq[i])]
+               : i in [1..5]];
+
+  // local version of H, with map from BigH
+  function localH(p)
+    assert IsPrime(p);
+    if IsOdd(p) then
+      // Q_p^* mod squares is Z/2Z x Z/2Z
+      Hloc := AbelianGroup([2, 2]);
+      function sqclass(z)
+        v := Valuation(z, p);
+        return Hloc![v, IsSquare(GF(p)!(z/p^v)) select 0 else 1];
+      end function;
+    else
+      // p = 2: Q_2^* mod squares is Z/2Z x Z/2Z x Z/2Z
+      Hloc := AbelianGroup([2, 2, 2]);
+      function sqclass(z)
+        v := Valuation(z, 2);
+        r := (Integers()!(Integers(8)!(z/2^v))+1) div 2; // 1,3,5,7 --> 1,2,3,4
+        return Hloc!([v] cat [[0,0],[1,0],[0,1],[1,1]][r]);
+      end function;
+    end if;
+    // construct maps from global to local objects
+    SelZtoloc := hom<SelZ -> Hloc | [sqclass(g @@ mSelZ) : g in OrderedGenerators(SelZ)]>;
+    SelEloc, injsEloc, projsEloc := DirectProduct([Hloc, Hloc, Hloc]);
+    SelEtoloc := hom<SelE -> SelEloc | [&+[injsEloc[i](SelZtoloc(projsE[i](g))) : i in [1..3]]
+                                         : g in OrderedGenerators(SelE)]>;
+    BigHloc, injsHloc, projsHloc := DirectProduct([SelEloc : i in [1..5]]);
+    Htoloc := hom<H -> BigHloc | [&+[injsHloc[i](SelEtoloc(projsH[i](g))) : i in [1..5]]
+                                         : g in OrderedGenerators(H)]>;
+    // combine maps a 15-tuple of elements of Hloc to BigHloc
+    combine := func<Hlocseq | &+[injsHloc[i](&+[injsEloc[j](Hlocseq[3*(i-1)+j]) : j in [1..3]])
+                                  : i in [1..5]]>;
+    H1loc := sub<BigHloc | [Htoloc(g) : g in Generators(H1)]>;
+    Hqloc, toHqloc := quo<BigHloc | H1loc>;
+    HqtoHqloc := hom<Hq -> Hqloc | [toHqloc(Htoloc(g @@ toHq)) : g in OrderedGenerators(Hq)]>;
+    seqtoHqloc := func<seq | toHqloc(combine([sqclass(z) : z in seq]))>;
+    return HqtoHqloc, seqtoHqloc, sqclass;
+  end function;
+
+  // sign changes coming from A-action
+  signseq := [[1,1,1,1,1], [-1,1,1,1,1], [1,-1,1,1,1], [-1,-1,1,1,1],
+              [1,1,-1,1,1], [-1,1,-1,1,1], [1,-1,-1,1,1], [-1,-1,-1,1,1],
+              [1,1,1,-1,1], [-1,1,1,-1,1], [1,-1,1,-1,1], [-1,-1,1,-1,1],
+              [1,1,-1,-1,1], [-1,1,-1,-1,1], [1,-1,-1,-1,1], [-1,-1,-1,-1,1]];
+  // local info at good prime
+  function local_info_good(p)
+    assert IsPrime(p) and p notin bad;
+    HqtoHqloc, seqtoloc, sqclass := localH(p);
+    result := {Codomain(HqtoHqloc)| };
+    function evuseq(useq)
+      // find image in Hqloc of a point on C mod p given by its coordinates useq
+      i := 0;
+      repeat
+        // find an orbit representative such that the descent map has good reduction
+        i +:= 1;
+        s := signseq[i];
+        evseq := [[Evaluate(t, [s[j]*useq[j] : j in [1..5]]) : t in trip] : trip in tripseq];
+      until forall{trip : trip in evseq | #[t : t in trip | GF(p)!t eq 0] le 1};
+      for i := 1 to 5 do
+        trip := evseq[i];
+        tripp := ChangeUniverse(trip, GF(p));
+        pos := Position(tripp, 0);
+        if pos gt 0 then
+          // fix zero entry using "square norm" condition
+          evseq[i][pos] := &*[t : t in trip | GF(p)!t ne 0];
+        else
+          assert IsSquare(&* tripp);
+        end if;
+      end for;
+      return seqtoloc(&cat evseq);
+    end function;
+    // points at infinity (i.e. u_5 = 0): they exist iff all a_i are in the same square class
+    if #{sqclass(a) : a in aseqn[1..4]} eq 1 then
+      useq := [Integers()!s where _, s := IsSquare(GF(p)!(aseqn[1]*a)) : a in aseqn];
+      Include(~result, evuseq(useq));
+    end if;
+    // other points
+    for z := 0 to p-1 do
+      useq := [];
+      for i := 1 to 4 do
+        flag, s := IsSquare(GF(p)!(1 + aseqn[i]*z));
+        if not flag then continue z; end if;
+        Append(~useq, Integers()!s);
+      end for;
+      Append(~useq, 1);
+      Include(~result, evuseq(useq));
+    end for;
+    return HqtoHqloc, result;
+  end function;
+  // keep description of subset of Hq = H/H1 containing image of Selmer set
+  // as union of cosets of a subgroup ker of Hq;
+  // initialize with all of Hq
+  ker := Hq;
+  cosets := {Hq!0};
+  // include restrictions coming from a new prime
+  function new_ker_cosets(ker, cosets, h, im)
+    // h : Hq --> target, im a subset of target
+    // interseect with h^-1(im)
+    kerh := Kernel(h);
+    newker := ker meet kerh;
+    reps := {z @@ q : z in Q} where Q, q := quo<ker | newker>;
+    newcos := {c + r : c in cosets, r in reps | h(c+r) in im};
+    return newker, newcos;
+  end function;
+  printf "\nFiltering using good primes up to 100...\n";
+  for p in PrimesInInterval(3, 100) do
+    if p notin bad then
+      printf "  p = %o --> ", p;
+      Hqtoloc, locinfo := local_info_good(p);
+      ker, cosets := new_ker_cosets(ker, cosets, Hqtoloc, locinfo);
+      printf "set size = %o * %o = %o\n", #cosets, #ker, #cosets*#ker;
+      if #ker eq 1 and cosets eq knownimage then
+        printf "reduced to image of known points\n";
+        break;
+      end if;
+    end if;
+  end for;
+  assert #ker eq 1 and cosets eq knownimage;
+
+  // find representatives for elements in Selmer set
+  relpts := [ptsCrep[1]];
+  rempts := Set(ptsCrep[2..#ptsCrep]);
+  remim := Exclude(cosets, Universe(cosets)!0);
+  while not IsEmpty(remim) do
+    pt := Rep(rempts);
+    Exclude(~rempts, pt);
+    impt := toHq(CtoH(pt));
+    if impt in remim then
+      Exclude(~remim, impt);
+      Append(~relpts, pt);
+    end if;
+  end while;
+  // note set of points on C in the same class as pt in relpts
+  ptsinclass := [{pt1 : pt1 in ptsC | CtoH(pt1) eq impt} where impt := CtoH(pt)
+                   : pt in relpts];
+  // construct F_{T,\xi}
+  printf "\nconstructing the curves F_{T,xi} ...\n";
+  HEseq := [**];
+  for i := 1 to #relpts do
+    e := ellcdeg4(aseqn, relpts[i], data);
+    Append(~HEseq, Append(e, &cat[e[2](pt) : pt in ptsC]));
+  end for;
+  // elliptic curves
+  printf "constructing their Jacobian elliptic curves...\n";
+  Etups := [* <E, toE, [toE(pt) : pt in e[5]]>
+                where E, toE := EllipticCurve(e[1], e[2](relpts[i])[1])
+                where e := HEseq[i]
+              : i in [1..#relpts] *];
+
+  // set up set for collecting the extensions
+  result := {Rationals()|};
+
+  // descent on the curves
+  rempts := Set(relpts);
+  for i := 1 to #relpts do
+    pt := relpts[i];
+    printf "\ndealing with class of z = %o\n", ((pt[1]/pt[5])^2 - 1)/aseq[1];
+    e := Etups[i];
+    he := HEseq[i];
+    rkbd, lowbd := rank_bound(e[1], e[3], {}, isog);
+    if lowbd lt 4 then
+      if rkbd eq lowbd then
+        printf "    ==> know finite index subgroup; do ECChab\n";
+        Ecov := Expand(Inverse(e[2])*he[3]);
+        xcsE, flag := ECC(e[1], e[3], rkbd, Ecov);
+        if flag then
+          printf "  image on P^1 is %o\n", xcsE;
+          printf "  xcoord = %o\n", he[4];
+          for xcE in xcsE do
+            // check if point lifts to C; xcE is point on Pr1Q
+            CtoP1 := Extend(map<C -> Pr1Q | [Numerator(he[4]), Denominator(he[4])]>);
+            lifts := Points(xcE @@ CtoP1);
+            if not IsEmpty(lifts) then
+              ptC := Rep(lifts);
+              z := ((ptC[1]/ptC[5])^2 - 1)/aseq[1];
+              printf "    found extension %o\n", z;
+              Include(~result, z);
+            end if;
+          end for;
+          // now pt is done
+          Exclude(~rempts, pt);
+          continue i;
+        end if;
+      else
+        printf "    rank bound too large\n";
+      end if;
+    end if;
+  end for;
+
+  if IsEmpty(rempts) then
+    printf "\nSUCCESS: possible extensions are\n  %o\n\n", result;
+  else
+    printf "\nUnable to resolve problem for %o orbits\n", #rempts;
+  end if;
+  return result, rempts;
+end function;
+
+fam := func<t | [t-1, t+1, 4*t, 4*t*(2*t-1)*(2*t+1)]>;
+
+// Now do the check. Note that the index 0 in the paper is 5 here.
+// The cases thar are commented out are infeasible without GRH.
+time extensions, remaining := extendverify(fam(2), [{1,2},{1,3}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(3), [{1,5},{2,5}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(2/3), [{1,5},{1,3}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(3/2), [{1,2},{1,3}], false);
+assert IsEmpty(remaining);
+// time extensions, remaining := extendverify(fam(4), [{1,4},{2,3},{1,2}], true);
+// assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(3/4), [{1,5},{3,4},{1,3}], false);
+assert IsEmpty(remaining);
+// time extensions, remaining := extendverify(fam(4/3), [{2,5},{1,3},{1,5}], true);
+// assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(5), [{1,2},{3,5},{1,3}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(1/5), [{4,5},{1,3},{3,5}], true);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(2/5), [{1,3},{2,5},{1,2}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(3/5), [{1,3},{2,4},{1,2}], false);
+assert IsEmpty(remaining);
+time extensions, remaining := extendverify(fam(5/4), [{1,3},{2,4},{1,2}], true);
+assert IsEmpty(remaining);
+// time extensions, remaining := extendverify(fam(4/5), [{1,5},{3,5}], false);
+// assert IsEmpty(remaining);
