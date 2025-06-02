@@ -1,0 +1,13 @@
+// Magma code checking the computational claims in the paper
+// "The generalized Fermat equation with exponents 2, 3, n"
+// by Nuno Freitas, Bartosz Naskrecki and Michael Stoll
+
+// This file loads the files section3.magma, section5.magma, section7.magma, section8.magma
+// that do the verification for the various sections.
+
+load "section3.magma";
+load "section5.magma";
+load "section7.magma";
+load "section8.magma";
+
+quit;

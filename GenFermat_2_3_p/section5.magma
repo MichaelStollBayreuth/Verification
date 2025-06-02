@@ -1,0 +1,234 @@
+// Magma script that verifies the computational claims in Section 5 of
+// "The generalized Fermat equation with exponents 2, 3, n"
+// by Nuno Freitas, Bartosz Naskrecki and Michael Stoll
+
+// Some functions used later for the computations
+
+function Frey(a,b,d)
+ // Returns the Frey curve E_{(a,b,c)}^{(d)} attached to a solution (a,b,c) of x^2 + y^3 = z^p.
+ // Note that it depends only on a and b (adn d).
+ return QuadraticTwist(EllipticCurve([0,0,0,3*b,-2*a]),d);
+end function;
+
+procedure print_symplectic_type(E1, E2, sign)
+  // E1 and E2 are strings referring elliptic curves over Q,
+  // sign is a boolean.
+  // This prints a line indicating the symplectic type of the isomorphism type of the p-torsion module.
+  printf "%o and %o have %osymplectically isomorphic p-torsion.\n", E1, E2,
+         sign select "" else "anti-";
+end procedure;
+
+
+// This determines whether the p-torsion Galois modules of two elliptic curves E1 and E2 over Q
+// are symplectically or anti-symplectically isomorphic over Q_2^nr,
+// in the case when the inertial fieds of E1 and E2 at 2 agree and have ramification index 8
+// (which is equivalent to the inertia group of Q_2 acting via a quaternion group).
+function H8test(E1, E2, p)
+  // E1, E2: two elliptic curves over Q with same inertial field of ramification index 8 over Q_2
+  //         and conductor exponent 5
+  // p: an odd prime
+  // returns true if if the Galois representations on E1[p] and E2[p] are symplectically isomorphic,
+  //         false if they are anti-symplectically isomorphic.
+  // The test of symplecticity is based on Theorem 9 in
+  // [FK19] Nuno Freitas and Alain Kraus,
+  //        On the symplectic type of isomorphisms of the p-torsion of elliptic curves,
+  //        Memoirs of the AMS (to appear) (2019)
+
+  E1 := MinimalModel(E1);
+  E2 := MinimalModel(E2);
+  assert Valuation(Conductor(E1), 2) eq 5 and Valuation(Conductor(E2), 2) eq 5;
+
+  if LegendreSymbol(2,p) eq 1 then
+    // by Theorem 4.6
+    return true;
+  else
+    // get data of first curve (valuations of c4, and discriminant)
+    valDisc1 := Valuation(Discriminant(E1), 2);
+    c41, c61 := Explode(cInvariants(E1));
+    valc41 := Valuation(c41, 2);
+    // same for the second curve
+    valDisc2 := Valuation(Discriminant(E2), 2);
+    c42, c62 := Explode(cInvariants(E2));
+    valc42 := Valuation(c42, 2);
+    // see [FK19]; note that the conditions not tested here follow from the fact that
+    // lines (a) and (b) in Theorem 9 in loc. cit. are mutually exhaustive
+    // under the assumptions on E1 and E2 that are valid here.
+    return [valc41, valDisc1] in {[4, 6], [7, 12]} eq [valc42, valDisc2] in {[4, 6], [7, 12]};
+  end if;
+end function;
+
+// This is the analogous function over Q_3, based on Theorem 11 in [FK19].
+function Dic12test(E1, E2, p);
+  // E1, E2: two elliptic curves over Q with same inertial field of ramification index 12 over Q_3
+  //         and conductor exponent 3
+  // p: a prime >= 5
+  // returns true if the Galois representations on E1[p] and E2[p] are symplectically isomorphic,
+  //         false if they are anti-symplectically isomorphic.
+
+  E1 := MinimalModel(E1);
+  E2 := MinimalModel(E2);
+  assert Valuation(Conductor(E1), 3) eq 3 and Valuation(Conductor(E2), 3) eq 3;
+
+  if LegendreSymbol(3,p) eq 1 then
+    // by Theorem 4.7
+    return true;
+  else
+    // get data of first curve (valuation of discriminant)
+    valDisc1 := Valuation(Discriminant(E1), 3);
+    // same for the second curve
+    valDisc2 := Valuation(Discriminant(E2), 3);
+    // see [FK19]; note that the conditions not tested here follow from the fact that
+    // lines (a) and (b) in Theorem 11 in loc. cit. are mutually exhaustive
+    // under the assumptions on E1 and E2 that are valid here.
+    return valDisc1 in {3, 11} eq valDisc2 in {3, 11};
+  end if;
+end function;
+
+//////////////////////////////////////////////////////////////////////////////
+
+// /*
+printf "\n";
+printf "==================================================================\n";
+printf "VERIFICATION OF THE COMPUTATIONS IN SECTION 5\n";
+printf "==================================================================\n\n\n";
+
+printf "Lemma 5.2\n";
+printf "---------\n\n";
+
+// We note that the claim on the trace of Frobenius over L_3 is checked
+// in section3.magma.
+
+print "Checking the first part of Lemma 5.2\n";
+
+E1 := EllipticCurve("96a1");
+W1 := EllipticCurve("864c1");
+print_symplectic_type(CremonaReference(E1), CremonaReference(W1), H8test(E1, W1, 3));
+
+E2 := EllipticCurve("288a1");
+W2 := EllipticCurve("864a1");
+Z2 := EllipticCurve("864b1");
+
+print_symplectic_type(CremonaReference(E2), CremonaReference(W2), H8test(E2, W2, 3));
+print_symplectic_type(CremonaReference(E2), CremonaReference(Z2), H8test(E2, Z2, 3));
+print_symplectic_type(CremonaReference(W2), CremonaReference(Z2), H8test(W2, Z2, 3));
+
+print "\nChecking the second part of Lemma 5.2\n";
+
+// Note that beacuse of transitivity, it suffices to compare the Frey curves
+// to one of the fixed curves.
+
+// By the computation verifying the information in Table 1 (see section3.magma),
+// it suffices to take one representative of (a, b) mod (8, 8) and d in {1, -1, 2, -2}.
+// Below we list all d mentioned in Lemma 5.2 for ease of reference.
+
+// 96a1, symplectic (i_2 = 3, d = +-1, +-3 or i_2 = 5)
+class96s := [<a, b, d> : a in [2, -2], b in [1, -3], d in [1, -1]]
+             cat [<a, b, d> : a in [1, -1, 3, -3], b in [2], d in [2, -2]];
+// 96a1, antisymplectic (i_2 = 3, d = +-2, +- 6)
+class96a := [<a, b, d> : a in [2, -2], b in [-1, 3], d in [2, -2]];
+
+// 288a1, symplectic (i_2 = 2, d = +-1, +-3 or i_2 = 6)
+class288s := [<a, b, d> : a in [0, 4], b in [1, -3], d in [1, -1]]
+              cat [<a, b, d> : a in [1, -1, 3, -3], b in [-2], d in [2, -2]];
+// 288a1, antisymplectic (i_2 = 2, d = +-2, +-6)
+class288a := [<a, b, d> : a in [0, 4], b in [-1, 3], d in [2, -2]];
+
+printf "symplectically isomorphic to 288a1 ";
+for tup in class288s do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert H8test(E2, C, 3);
+end for;
+printf "--> OK.\n";
+
+printf "anti-symplectically isomorphic to 288a1 ";
+for tup in class288a do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert not H8test(E2, C, 3);
+end for;
+printf "--> OK.\n";
+
+printf "symplectically isomorphic to 96a1 ";
+for tup in class96s do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert H8test(E1, C, 3);
+end for;
+printf "--> OK.\n";
+
+printf "anti-symplectically isomorphic to 96a1 ";
+for tup in class96a do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert not H8test(E1, C, 3);
+end for;
+printf "--> OK.\n\n\n";
+
+printf "Lemma 5.3\n";
+printf "---------\n\n";
+
+// We note that the claim on the trace of Frobenius over L_5 is checked
+// in section3.magma.
+
+print "Checking the first part of Lemma 5.3\n";
+
+E1 := EllipticCurve("27a1");
+W1 := EllipticCurve("864b1");
+Z1 := EllipticCurve("864c1");
+print_symplectic_type(CremonaReference(E1), CremonaReference(Z1), Dic12test(E1, Z1, 5));
+print_symplectic_type(CremonaReference(E1), CremonaReference(W1), Dic12test(E1, W1, 5));
+print_symplectic_type(CremonaReference(W1), CremonaReference(Z1), Dic12test(W1, Z1, 5));
+
+E2 := EllipticCurve("54a1");
+W2 := EllipticCurve("864a1");
+
+print_symplectic_type(CremonaReference(E2), CremonaReference(W2), Dic12test(E2, W2, 5));
+
+print "\nChecking the second part of Lemma 5.3\n";
+
+// By the computation verifying the information in Table 1 (see section3.magma),
+// it suffices to take one representative of (a, b) mod (9, 3) and d in {1, 3}.
+// Below we list all d mentioned in Lemma 5.2 for ease of reference.
+
+// 27a1, antisymplectic (i_3 = 3, 5 with d = +-1, +-2)
+class27a := [<3, 1, 1>, <1, 0, 1>, <2, 0, 1>];
+// 27a1, symplectic (i_3 = 3, 5 with d = +-3, +-6)
+class27s := [<3, 1, 3>, <1, 0, 3>, <2, 0, 3>];
+
+// 54a1, antisymplectic (i_3 = 4, 7 with d = +-1, +-2)
+class54a := [<3, -1, 1>, <1, 1, 1>, <4, 1, 1>];
+// 54a1, symplectic (i_3 = 4, 7 with d = +-3, +-6)
+class54s := [<3, -1, 3>, <1, 1, 3>, <4, 1, 3>];
+
+printf "anti-symplectically isomorphic to 27a1 ";
+for tup in class27a do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert not Dic12test(E1, C, 5);
+end for;
+printf "--> OK.\n";
+
+printf "symplectically isomorphic to 27a1 ";
+for tup in class27s do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert Dic12test(E1, C, 5);
+end for;
+printf "--> OK.\n";
+
+printf "anti-symplectically isomorphic to 54a1 ";
+for tup in class54a do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert not Dic12test(E2, C, 5);
+end for;
+printf "--> OK.\n";
+
+printf "symplectically isomorphic to 54a1 ";
+for tup in class54s do
+  a, b, d := Explode(tup);
+  C := Frey(a, b, d);
+  assert Dic12test(E2, C, 5);
+end for;
+printf "--> OK.\n\n";

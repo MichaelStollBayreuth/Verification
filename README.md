@@ -79,3 +79,32 @@ contains Magma programs related to the paper.
 
 * [ellQt.magma](DiophQuintuples/ellQt.magma):
   this implements the algorithm described in Section 5.
+
+## The generalized Fermat equation with exponents 2, 3, $n$
+
+(With Bartosz Naskręcki and Nuno Freitas;
+[arXiv](https://arxiv.org/abs/1703.05058); [DOI](https://doi.org/10.1112/S0010437X19007693))
+
+* [GenFermat.tar.gz](GenFermat_2_3_p/GenFermat.tar.gz):
+  a compressed tarball containing all of the following files
+
+* [main.magma](GenFermat_2_3_p/main.magma):
+  this loads the following four files and so verifies everything.
+
+* [section3.magma](GenFermat_2_3_p/section3.magma):
+  this checks the computations in Section 3.
+
+* [section5.magma](GenFermat_2_3_p/section5.magma):
+  this checks the computations in Section 5.
+
+* [section7.magma](GenFermat_2_3_p/section7.magma):
+  this checks the computations in Section 7.
+
+* [section8.magma](GenFermat_2_3_p/section8.magma):
+  this checks the computations in Section 8.
+
+* [localtest.magma](GenFermat_2_3_p/localtest.magma):
+  this contains some auxiliary functions and is loaded by section7.magma.
+
+* [X1_13_opt.magma](GenFermat_2_3_p/X1_13_opt.magma):
+  this contains some auxiliary functions and is loaded by section8.magma.

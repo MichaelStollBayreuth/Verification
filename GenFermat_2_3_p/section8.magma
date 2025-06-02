@@ -1,0 +1,947 @@
+// Magma code checking the computational claims in Section 8 of
+// "The generalized Fermat equation with exponents 2, 3, n"
+// by Nuno Freitas, Bartosz Naskrecki and Michael Stoll
+
+printf "\n";
+printf "==================================================================\n";
+printf "VERIFICATION OF THE COMPUTATIONS IN SECTION 8\n";
+printf "==================================================================\n\n\n";
+
+printf "Section 8.1\n";
+printf "-----------\n\n";
+
+// Define the third cyclotomic field K = Q(sqrt(-3)); w is a primitive cube root of unity.
+K<w> := NumberField(Polynomial([1,1,1]));
+autK := hom<K -> K | w^2>; // the nontrivial automorphism of K
+P3K<vv,yy,zz> := PolynomialRing(K, 3);
+
+
+// Construct the twist of X_1(13) over X_0(13) corresponding
+// to the cocycle class specified by d and g (= gamma in the paper).
+
+// Set up affine 3-space over Q.
+Aff3Q<v,y,z> := AffineSpace(Rationals(), 3);
+P3Q := CoordinateRing(Aff3Q);
+
+// This gives the twisted X_1(13) as a curve in the coordinates v, y, z.
+function curve(d,g)
+  pol := g*(zz-w)^3*(vv-3*w^2) - autK(g)*(zz-w^2)^3*(vv-3*w);
+  c := MonomialCoefficient(pol, zz^3);
+  if c eq 0 then c := MonomialCoefficient(pol, zz^3*vv); end if;
+  pol *:= 1/c;
+  return Curve(Aff3Q, [d*y^2 - (v+2)^2 - 4, P3Q!pol]);
+end function;
+
+// This realizes the curve as a hyperelliptic curve.
+// It returns the hyperelliptic curve and the isomorphism from the space curve.
+function curveH(d,g)
+  flag, H, toH := IsHyperelliptic(curve(d,g));
+  assert flag;
+  R, toR := ReducedMinimalWeierstrassModel(H);
+  M, toM :=  SimplifiedModel(R);
+  return M, toH*toR*toM;
+end function;
+
+P<x> := PolynomialRing(Rationals());
+
+// the j-invariant map from X_0(13) to P^1 in terms of the coordinate v
+jv := (x^2 + 3*x + 9)*(x^4 + 3*x^3 + 5*x^2 - 4*x - 4)^3/(x - 1);
+
+// the possible twisting parameters
+dseq := [1, 2, 13, 26]; // excluding d < 0 and 3|d, since then dy^2 = (v+2)^2 + 4 is not ELS
+gseq := [1, w, w^2, 4+w, w*(4+w), w^2*(4+w), 3-w, w*(3-w), w^2*(3-w)];
+
+// produce all the curves
+printf "Computing all twists for reducible 13-torsion...\n";
+curves := [<d, g, C, toC> where C, toC := curveH(d,g) : g in gseq, d in dseq];
+printf "Restricting to the locally solvable ones...\n";
+curveslocsol := [a : a in curves | forall{p : p in [2,3,13] | IsLocallySolvable(a[3], p)}];
+
+printf "\n  this results in the following table:\n";
+printf "| %2o | %8o | %59o |\n", "d", "delta", "f";
+printf "+----+"*"-"^10*"+"*"-"^61*"+\n";
+for a in curveslocsol do
+  printf "| %2o | %8o | %59o |\n", a[1], a[2], HyperellipticPolynomials(a[3]);
+end for;
+printf "+----+"*"-"^10*"+"*"-"^61*"+\n\n";
+
+assert [<a[1], a[2]> : a in curveslocsol]
+         eq [<1, K!1>, <2, w>, <2, w+4>, <2, -3*w-4>, <13, 3*w-1>, <26, w>, <26, w+4>, <26, -3*w-4>];
+assert forall{pair : pair in [<1,5>, <2,7>, <3,6>, <4,8>]
+                   | IsIsomorphic(curveslocsol[pair[1],3], curveslocsol[pair[2],3])};
+
+printf "Doing a 2-cover descent on the third curve...\n";
+assert IsEmpty(TwoCoverDescent(curveslocsol[3,3] : PrimeBound := 100, PrimeCutoff := 100));
+printf "  ...this gives an empty 2-Selmer set, so there are no rational points\n";
+
+// Restrict to remaining ones.
+Cseq := [a[3] : a in curveslocsol[[1,2,4,5,7,8]]];
+// Find their small rational points.
+ptseq := [* Points(C : Bound := 100) : C in Cseq *];
+mapseq := [a[4] : a in curveslocsol[[1,2,4,5,7,8]]]; // the isomorphisms
+// Get images of known points on the v-lines.
+vpoints := [&join[Points(pt @@ mapseq[i]) : pt in ptseq[i]] : i in [1..#Cseq]];
+vcoords := [{pt[1] : pt in s} : s in vpoints];
+// Check that each curve gives exactly one point on X_0(13) = P^1_v.
+assert forall{s : s in vcoords | #s le 1};
+
+// for nice output
+procedure printfact(num)
+  // print positive integer in factored form
+  if num eq 1 then printf "1"; return; end if;
+  fact := Factorization(num);
+  for i := 1 to #fact do
+    printf "%o", fact[i,1];
+    if fact[i,2] gt 1 then printf "^%o", fact[i,2]; end if;
+    if i lt #fact then printf "*"; end if;
+  end for;
+end procedure;
+
+procedure printfactrat(rat)
+  // print rational number rat in factored form
+  if rat eq 0 then printf "0"; return; end if;
+  if rat lt 0 then printf "-"; end if;
+  printfact(Numerator(rat));
+  den := Denominator(rat);
+  if den gt 1 then printf " / "; printfact(den); end if;
+end procedure;
+
+printf "\nThe small rational points on the remaining curves\n";
+printf "  map to the following v-coordinates and j-invariants.\n\n";
+for s in vcoords do
+  if IsEmpty(s) then
+    printf "v = infty,  j = infty\n";
+  else
+    v := Rep(s);
+    printf "v = %5o,  j = ", v;
+    if v eq 1 then
+      printf "infty\n";
+    else
+      printfactrat(Evaluate(jv, v)); printf "\n";
+    end if;
+  end if;
+end for;
+
+printf "\nWe determine the Mordell-Weil rank for the first three curves...\n";
+for i := 1 to 3 do
+  lb, ub := RankBounds(Jacobian(Cseq[i]));
+  assert lb eq ub;
+  printf "curve no. %o --> %o\n", i, ub;
+end for;
+
+assert Chabauty0(Jacobian(Cseq[1])) eq ptseq[1];
+printf "\nFor the first curve we easily get that #C(Q) = 6\n\n";
+
+printf "Now computing 2-Selmer sets for the second and third curves...\n";
+Sel2, mSel2 := TwoCoverDescent(Cseq[2] : PrimeBound := 10, PrimeCutoff := 10);
+Sel3, mSel3 := TwoCoverDescent(Cseq[3] : PrimeBound := 10, PrimeCutoff := 10);
+printf "  ... and checking that the known points surject onto them...\n";
+A<th> := Domain(mSel2);
+assert Sel2 eq {pt[3] eq 0 select Codomain(mSel2)!0 else mSel2(pt[1]/pt[3] - th) : pt in ptseq[2]};
+A<th> := Domain(mSel3);
+assert Sel3 eq {pt[3] eq 0 select Codomain(mSel3)!0 else mSel3(pt[1]/pt[3] - th) : pt in ptseq[3]};
+printf "  ... done\n";
+printf "  This shows that it is enough to find the rational points\n";
+printf "  on the 2-covering that lifts the points at infinity.\n\n";
+
+P1 := ProjectiveSpace(Rationals(), 1);
+
+printf "Elliptic Curve Chabauty for the third curve\n";
+printf "-------------------------------------------\n\n";
+
+// Set up the cubic subfield of the splitting field of the right hand side polynomial.
+L := NumberField(x^3 + x^2 + 9*x + 1);
+OL := LLL(Integers(L));
+PL := PolynomialRing(L);
+ffL := Factorization(PL!HyperellipticPolynomials(Cseq[3]));
+// Check that polynomial splits into three quadratic factors over L.
+assert #ffL eq 3 and forall{a : a in ffL | Degree(a[1]) eq 2};
+
+// Set up E.
+printf "Setting up elliptic curve...\n";
+EH := HyperellipticCurve(16*ffL[1,1]*ffL[2,1]);
+E, toE := EllipticCurve(EH);
+T, mT := TorsionSubgroup(E);
+printf "  torsion =";
+invT := Invariants(T);
+if IsEmpty(invT) then
+  printf " trivial";
+else
+  for n := 1 to #invT do
+    printf " Z/%oZ", invT[n];
+    if n lt #invT then printf " x"; end if;
+  end for;
+end if;
+printf "\n";
+// The known points on E.
+ptsE := [toE(EH![1,4,0]), toE(EH![1,-4,0])] cat [mT(t) : t in T | t ne T!0];
+printf "  computing 2-Selmer group...\n";
+SelE, mSelE := TwoSelmerGroup(E);
+rkSel := #Invariants(SelE);
+assert rkSel eq 3;
+rktors := #[i : i in invT | IsEven(i)];
+printf "  ... --> rank of Selmer group is %o, so MW rank bound is %o\n", rkSel, rkSel-rktors;
+// We check that the images of the known points generate the Selmer group.
+cas := CasselsMap(MultiplicationByMMap(E, 2));
+A<th> := Domain(mSelE);
+toA := hom<Codomain(cas) -> A | th/64>; // scaling differs
+assert MinimalPolynomial(toA(Codomain(cas).1)) eq Modulus(Codomain(cas)); // sanity check
+assert sub<SelE | [mSelE(toA(cas(pt))) : pt in ptsE]> eq SelE;
+printf "  verified that known points surject onto Selmer group\n";
+
+// Now do the elliptic curve Chabauty computation.
+printf "  Setting up EC Chabauty input data...\n";
+MW := AbelianGroup(invT cat [0]); // the Mordell-Weil group of E as an abstract abelian group
+assert Order(ptsE[1]) eq 0; // point of infinite order
+// map from abstract group to points on E
+MWmap := map<MW -> E | a :-> mT(s[1]*T.1+s[2]*T.2) + s[3]*ptsE[1] where s := Eltseq(a)>;
+// The map from E to P^1; we are interested in L-points on E whose image on P^1 is rational.
+// It is given by the x-coordinate map on the model EH.
+covmap := Extend(Expand(Inverse(toE)*map<EH -> P1 | [EH.1, EH.3]>));
+printf "  running EC Chabauty...\n";
+MWset, N := Chabauty(MWmap, covmap);
+assert Set(PrimeDivisors(N)) subset {2}; // so already sufficiently saturated (2-descent --> odd index)
+printf "  ... this gives %o points on the elliptic curve,\n", #MWset;
+xcs := Setseq({covmap(MWmap(pt)) : pt in MWset});
+printf "  with x-coordinates";
+for i := 1 to #xcs do
+  if xcs[i][2] eq 0 then
+    printf " infty";
+  else
+    printf " %o", xcs[i][1]/xcs[i][2];
+  end if;
+  if i lt #xcs then printf ","; end if;
+end for;
+printf "\n";
+ptsC := &join[Points(Cseq[3], xc[2] eq 0 select Infinity() else xc[1]/xc[2]) : xc in xcs];
+printf "\nTherefore the only rational points on the third curve are\n  ";
+for i := 1 to #ptsC do
+  printf " %o", ptsC[i];
+  if i lt #ptsC then printf ","; end if;
+end for;
+printf "\n  and the other points in their orbit under the automorphism group.\n\n";
+
+printf "Elliptic Curve Chabauty for the second curve\n";
+printf "--------------------------------------------\n\n";
+// Set up the field over which the right hand side polynomial acquires a root.
+L := NumberField(x^6 - 18*x^4 + 32*x^3 + 117*x^2 - 312*x + 260);
+OL := LLL(Integers(L));
+PL := PolynomialRing(L);
+ffL := Factorization(PL!HyperellipticPolynomials(Cseq[2]));
+// Check that over L, the polynomial splits into three linear factors and a cubic factor.
+assert #ffL eq 4 and forall{a : a in ffL[1..3] | Degree(a[1]) eq 1};
+printf "Setting up elliptic curve...\n";
+EH := HyperellipticCurve(16*ffL[1,1]*ffL[4,1]);
+E, toE := EllipticCurve(EH);
+T, mT := TorsionSubgroup(E);
+printf "  torsion =";
+invT := Invariants(T);
+if IsEmpty(invT) then
+  printf " trivial";
+else
+  for n := 1 to #invT do
+    printf " Z/%oZ", invT[n];
+    if n lt #invT then printf " x"; end if;
+  end for;
+end if;
+printf "\n";
+assert #invT eq 0;
+ptsE := [toE(EH![1,4,0]), toE(EH![1,-4,0]), toE(EH![-Coefficient(ffL[1,1],0),0])];
+// The following is not strictly necessary; without it, the computation may take a few days.
+printf "  ==> SETTING CLASS GROUP BOUNDS ASSUMING GRH <==\n";
+SetClassGroupBounds("GRH");
+printf "  computing 2-Selmer group...\n";
+SelE, mSelE := TwoSelmerGroup(E);
+rkSel := #Invariants(SelE);
+assert rkSel eq 1;
+rktors := #[i : i in invT | IsEven(i)];
+printf "  ... --> rank of Selmer group is %o, so MW rank bound is %o\n", rkSel, rkSel-rktors;
+cas := CasselsMap(MultiplicationByMMap(E, 2));
+A<th> := Domain(mSelE);
+toA := hom<Codomain(cas) -> A | th>;
+assert MinimalPolynomial(toA(Codomain(cas).1)) eq Modulus(Codomain(cas));
+assert sub<SelE | [mSelE(toA(cas(pt))) : pt in ptsE]> eq SelE;
+printf "  verified that known points surject onto Selmer group\n";
+printf "  Setting up EC Chabauty input data...\n";
+MW := AbelianGroup([0]);
+assert Order(ptsE[1]) eq 0; // point of infinite order
+MWmap := map<MW -> E | a :-> s[1]*ptsE[1] where s := Eltseq(a)>;
+covmap := Extend(Expand(Inverse(toE)*map<EH -> P1 | [EH.1, EH.3]>));
+printf "  running EC Chabauty...\n";
+MWset, N := Chabauty(MWmap, covmap);
+// check saturation at odd prime divisors of N; here easy, since MW group = Z
+for p in PrimeDivisors(N) do
+  if p gt 2 then assert not IsDivisibleBy(ptsE[1], p); end if;
+end for;
+printf "  ... this gives %o points on the elliptic curve,\n", #MWset;
+xcs := Setseq({covmap(MWmap(pt)) : pt in MWset});
+printf "  with x-coordinates";
+for i := 1 to #xcs do
+  if xcs[i][2] eq 0 then
+    printf " infty";
+  else
+    printf " %o", xcs[i][1]/xcs[i][2];
+  end if;
+  if i lt #xcs then printf ","; end if;
+end for;
+printf "\n";
+ptsC := &join[Points(Cseq[2], xc[2] eq 0 select Infinity() else xc[1]/xc[2]) : xc in xcs];
+printf "\nTherefore the only rational points on the second curve are\n  ";
+for i := 1 to #ptsC do
+  printf " %o", ptsC[i];
+  if i lt #ptsC then printf ","; end if;
+end for;
+printf "\n  and the other points in their orbit under the automorphism group.\n\n\n";
+
+printf "Section 8.2\n";
+printf "-----------\n\n";
+
+// Load some code used in the following.
+// (This redefines "curve" to work over fields other than Q, among other things.)
+load "X1_13_opt.magma";
+
+printf "\nDealing with C_27a1...\n\n";
+// Look at twist coming from 27a1 (which has j = 0, so use isogenous 27a2 with j /= 0).
+K<w> := NumberField(x^2+x+1); // P<x> := PolynomialRing(Rationals()) is in X1_13_opt.magma
+OK := Integers(K);
+PK<X> := PolynomialRing(K);
+H0, ptH0, vmap0 := twist13(EllipticCurve("27a2")); // gives the correct twist of X_1(13)
+// Transfer from base field of H0 to isomorphic field K.
+flag, toK := IsIsomorphic(BaseField(H0), K); assert flag; // check isomorphism
+toPK := hom<PolynomialRing(BaseField(H0)) -> PK | toK*Bang(K, PK), X>;
+H1 := HyperellipticCurve(toPK(HyperellipticPolynomials(H0)));
+ptH1 := H1![toK(c) : c in Eltseq(ptH0)];
+vmap1 := toPK(Numerator(vmap0)) / toPK(Denominator(vmap0));
+// use simpler form of curve
+fH := X^6 + 22*X^3 + 13;
+H := HyperellipticCurve(fH);
+flag, toH := IsIsomorphic(H1, H); assert flag; // check that H and H1 are isomorphic
+ptH := toH(ptH1);
+vmap := Evaluate(vmap1, Evaluate(dp[1], [X,0,1])/Evaluate(dp[3], [X,0,1]))
+         where dp := DefiningPolynomials(Inverse(toH));
+// The known points on H.
+ptsH := [H(K)| [1,6], [1,-6], [w,6], [w,-6], [w^2,6], [w^2,-6], [1,1,0], [1,-1,0]];
+// Take (1:1:0) as basepoint.
+pt0 := H![1,1,0];
+// Construct the Jacobian
+J := Jacobian(H);
+// and generate some points on it.
+ptsJ := [pt - pt0 : pt in ptsH];
+// These are relations between the points
+rels := [[0, 0, 0, 0, 0, 0, 1, 0], [1, 0, 1, 0, 1, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0, -1],
+         [0, 0, 1, 1, 0, 0, 0, -1], [0, 0, 0, 0, 1, 1, 0, -1], [0, 0, 0, 0, 0, 0, 0, 3]];
+// check
+assert forall{b : b in rels | &+[b[j]*ptsJ[j] : j in [1..8]] eq J!0};
+// Set up MW group abstractly as generated by the eight points above.
+Z8 := FreeAbelianGroup(8);
+MW1, qMW1 := quo<Z8 | [Z8!b : b in rels]>;
+assert Invariants(MW1) eq [3,0,0]; // structure is Z/3Z x Z^2
+// Check that points no. 1, 3, 8 generate the group.
+assert sub<MW1 | [qMW1(Z8.1), qMW1(Z8.3), qMW1(Z8.8)]> eq MW1;
+// MW group as abstract abelian group.
+MW := AbelianGroup([3,0,0]);
+toMW1 := hom<MW -> MW1 | [qMW1(Z8.8), qMW1(Z8.1), qMW1(Z8.3)]>;
+bas := ptsJ[[8,1,3]]; // corresponds to MW = Z/3Z + Z + Z
+printf "found subgroup of J(K) isomorphic to Z/3Z + Z + Z\n";
+ptsHinMW := [qMW1(Z8.i) @@ toMW1 : i in [1..8]]; // known points as elements of the abstract group
+
+printf "computing upper bound for rank of J(K)...\n";
+assert RankBound(J) eq 2;
+printf " ... bound is 2\n\n";
+
+// get the j-map from H to P^1
+jmap := Evaluate(jv, vmap);
+cnumj := Coefficients(Numerator(jmap));
+cdenj := Coefficients(Denominator(jmap));
+
+// find points mod 5 with "rational" j-invariants
+pr5 := Decomposition(OK, 5)[1,1]; // 5 is inert in K
+F5, toF5 := ResidueClassField(pr5);
+// construct curve mod 5 and images of the points
+Hmod5 := HyperellipticCurve(Polynomial([toF5(c) : c in Coefficients(fH)]));
+ptsHmod5 := [Hmod5![toF5(c) : c in Eltseq(pt)] : pt in ptsH];
+Jmod5 := Jacobian(Hmod5);
+G5, mG5 := AbelianGroup(Jmod5);
+printf "group structure of J mod pr5: %o\n", Invariants(G5);
+pt0mod5 := Hmod5![1,1,0];
+// the reduction map MW = J(K) --> J-bar(F5)
+MWtoG5 := hom<MW -> G5 | [(pt - pt0mod5) @@ mG5 : pt in ptsHmod5[[8,1,3]]]>;
+imG5 := Image(MWtoG5);
+printf "group structure of image of J(K): %o, index = %o\n",
+       Invariants(imG5), Index(G5, imG5);
+imJ5 := {mG5(g) : g in imG5};
+j5num := Polynomial([toF5(c) : c in cnumj]);
+j5den := Polynomial([toF5(c) : c in cdenj]);
+pts5 := {pt : pt in Points(Hmod5)
+            | pt - pt0mod5 in imJ5 and evj(j5num, j5den, pt)[1] in GF(5)};
+printf "%o points on H mod 5 mapping into image of J(K) and with rational j\n", #pts5;
+ptG5 := {(pt - pt0mod5) @@ mG5 : pt in pts5};
+assert ptG5 eq {MWtoG5(pt) : pt in ptsHinMW};
+printf "they are the images of the known points\n\n";
+
+// find points mod 7 (= pairs of points mod the two primes above 7)
+// with "rational" j-invariants
+pr71, pr72 := Explode([a[1] : a in Decomposition(OK, 7)]); // 7 is split in K
+F71, toF71 := ResidueClassField(pr71);
+F72, toF72 := ResidueClassField(pr72);
+Hmod71 := HyperellipticCurve(Polynomial([toF71(c) : c in Coefficients(fH)]));
+Hmod72 := HyperellipticCurve(Polynomial([toF72(c) : c in Coefficients(fH)]));
+ptsHmod71 := [Hmod71![toF71(c) : c in Eltseq(pt)] : pt in ptsH];
+ptsHmod72 := [Hmod72![toF72(c) : c in Eltseq(pt)] : pt in ptsH];
+Jmod71 := Jacobian(Hmod71);
+Jmod72 := Jacobian(Hmod72);
+G71, mG71 := AbelianGroup(Jmod71);
+G72, mG72 := AbelianGroup(Jmod72);
+G7, injsG7, projsG7 := DirectProduct([G71, G72]);
+printf "group structure of J mod pr7_1, pr7_2: %o\n", Invariants(G7);
+pt0mod71 := Hmod71![1,1,0];
+pt0mod72 := Hmod72![1,1,0];
+MWtoG7 := hom<MW -> G7 | [injsG7[1]((ptsHmod71[i] - pt0mod71) @@ mG71)
+                            + injsG7[2]((ptsHmod72[i] - pt0mod72) @@ mG72)
+                           : i in [8,1,3]]>;
+imG7 := Image(MWtoG7);
+printf "group structure of image of J(K): %o, index = %o\n",
+       Invariants(imG7), Index(G7, imG7);
+imJ7 := {<mG71(projsG7[1](g)), mG72(projsG7[2](g))> : g in imG7};
+j71num := Polynomial([toF71(c) : c in cnumj]);
+j72num := Polynomial([toF72(c) : c in cnumj]);
+j71den := Polynomial([toF71(c) : c in cdenj]);
+j72den := Polynomial([toF72(c) : c in cdenj]);
+pts7 := {<pt1, pt2> : pt1 in Points(Hmod71), pt2 in Points(Hmod72)
+            | <pt1 - pt0mod71, pt2 - pt0mod72> in imJ7
+                and evj(j71num, j71den, pt1) eq evj(j72num, j72den, pt2)};
+printf "%o pairs of points on H mod 7 mapping into image of J(K) and with rational j\n\n", #pts7;
+ptG7 := {injsG7[1]((pt[1] - pt0mod71) @@ mG71) + injsG7[2]((pt[2] - pt0mod72) @@ mG72)
+          : pt in pts7};
+
+// Check saturation at 2 and 3
+// (this verifies that imG5 and imG7 above are really the images of J(K),
+//  since the group orders are divisible by 2 and 3 only).
+assert IsTrivial(6*G7);
+assert Kernel(MWtoG7) eq 6*MW;
+printf "known subgroup of J(K) is saturated at 2 and 3\n\n";
+
+// Sieve in MW mod 6. Note that MW/6*MW injects into the group mod 7.
+Q, qm := quo<MW | 6*MW>;
+G5Q, G5qm := quo<G5 | 6*G5>; // group over F5, mod 6
+ptG5Q := {G5qm(g) : g in ptG5};
+survivors := {q : q in Q | G5qm(MWtoG5(s)) in ptG5Q and MWtoG7(s) in ptG7 where s := q @@ qm};
+assert survivors eq {qm(pt) : pt in ptsHinMW};
+printf "sieving at 5 and 7 shows that only residue classes mod 7\n";
+printf " that may contain points are those containing the known points\n\n";
+
+// basis of kernel of reduction
+baskerred := [6*bas[2], 6*bas[3]];
+assert baskerred[2][1] eq Evaluate(baskerred[1][1], X/w)*w^2
+        and baskerred[2][2] eq Evaluate(baskerred[1][2], X/w);
+
+Pws<t> := LaurentSeriesAlgebra(K);
+// evaluate a power series via homomorphism h
+evser := func<ser, x, h | &+[h(Coefficient(ser,j))*x^j
+                              : j in [0..AbsolutePrecision(ser)-1]]>;
+
+// Chabauty computation over Q_7.
+Q7 := pAdicField(7);
+wQ7 := Roots(x^2+x+1, Q7)[1,1];
+// make sure our choices of cube root of unity are compatible
+if GF(7)!wQ7 ne toF71(w) then wQ7 := wQ7^2; end if;
+assert GF(7)!wQ7 eq toF71(w) and GF(7)!wQ7^2 eq toF72(w);
+// The two embeddings of K into Q_7.
+toQ71 := hom<K -> Q7 | wQ7>;
+toQ72 := hom<K -> Q7 | wQ7^2>;
+
+toPQ71 := func<pol | Polynomial([toQ71(c) : c in Coefficients(pol)])>;
+bask1 := [<toPQ71(b[1]), toPQ71(b[2])> : b in baskerred];
+rts1 := [a[1] : a in Roots(bask1[1,1])];
+assert #rts1 eq Degree(bask1[1,1]) and forall{r : r in rts1 | GF(7)!r eq toF71(w)^2};
+// baskerred[1] reduces to sum of points with x-coordinate w^2 mod pr71
+// expand y in terms of t = x - w^2
+yser := Sqrt(Evaluate(fH, t + w^2));
+if GF(7)!Coefficient(yser,0) ne GF(7)!Evaluate(bask1[1,2], rts1[1]) then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert GF(7)!Coefficient(yser,0) eq GF(7)!Evaluate(bask1[1,2], rts1[1]);
+assert GF(7)!Coefficient(yser,0) eq -GF(7)!Evaluate(bask1[1,2], rts1[2]);
+// Write dx/2y and x dx/2y as series in t times dt, where t = x - w^2.
+omser1 := 1/(2*yser);
+omser2 := (t + w^2)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row1 := [evser(int1, rts1[1]-wQ7^2, toQ71) - evser(int1, rts1[2]-wQ7^2, toQ71),
+         evser(int2, rts1[1]-wQ7^2, toQ71) - evser(int2, rts1[2]-wQ7^2, toQ71)];
+// repeat with baskerred[2]; here points are near (1,+-6)
+rts2 := [wQ7*r : r in rts1];
+assert forall{r : r in rts2 | IsZero(Evaluate(bask1[2,1], r))};
+yser := Sqrt(Evaluate(fH, t + 1));
+if GF(7)!Coefficient(yser,0) ne GF(7)!Evaluate(bask1[2,2], rts2[1]) then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert GF(7)!Coefficient(yser,0) eq GF(7)!Evaluate(bask1[2,2], rts2[1]);
+assert GF(7)!Coefficient(yser,0) eq -GF(7)!Evaluate(bask1[2,2], rts2[2]);
+// write dx/2y and x dx/2y as series in t times dt, where t = x - 1
+omser1 := 1/(2*yser);
+omser2 := (t + 1)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row2 := [evser(int1, rts2[1]-1, toQ71) - evser(int1, rts2[2]-1, toQ71),
+         evser(int2, rts2[1]-1, toQ71) - evser(int2, rts2[2]-1, toQ71)];
+
+// same for the other completion
+toPQ72 := func<pol | Polynomial([toQ72(c) : c in Coefficients(pol)])>;
+bask2 := [<toPQ72(b[1]), toPQ72(b[2])> : b in baskerred];
+rts1 := [a[1] : a in Roots(bask2[1,1])];
+assert #rts1 eq Degree(bask2[1,1]) and forall{r : r in rts1 | GF(7)!r eq toF72(w)};
+// baskerred[1] reduces to sum of points with x-coordinate w mod pr72
+shift := w;
+// expand y in terms of t = x - w
+yser := Sqrt(Evaluate(fH, t + shift));
+if GF(7)!Coefficient(yser,0) ne GF(7)!Evaluate(bask2[1,2], rts1[1]) then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert GF(7)!Coefficient(yser,0) eq GF(7)!Evaluate(bask2[1,2], rts1[1]);
+assert GF(7)!Coefficient(yser,0) eq -GF(7)!Evaluate(bask2[1,2], rts1[2]);
+// write dx/2y and x dx/2y as series in t times dt, where t = x - w
+omser1 := 1/(2*yser);
+omser2 := (t + shift)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row3 := [evser(int1, rts1[1]-toQ72(shift), toQ72) - evser(int1, rts1[2]-toQ72(shift), toQ72),
+         evser(int2, rts1[1]-toQ72(shift), toQ72) - evser(int2, rts1[2]-toQ72(shift), toQ72)];
+// repeat with baskerred[2]; here points are near (1,+-6)
+rts2 := [wQ7^2*r : r in rts1];
+assert forall{r : r in rts2 | IsZero(Evaluate(bask2[2,1], r))};
+assert forall{r : r in rts2 | GF(7)!r eq toF72(w^2)};
+shift := w^2;
+yser := Sqrt(Evaluate(fH, t + shift));
+if GF(7)!Coefficient(yser,0) ne GF(7)!Evaluate(bask2[2,2], rts2[1]) then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert GF(7)!Coefficient(yser,0) eq GF(7)!Evaluate(bask2[2,2], rts2[1]);
+assert GF(7)!Coefficient(yser,0) eq -GF(7)!Evaluate(bask2[2,2], rts2[2]);
+// write dx/2y and x dx/2y as series in t times dt, where t = x - w^2
+omser1 := 1/(2*yser);
+omser2 := (t + shift)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row4 := [evser(int1, rts2[1]-toQ72(shift), toQ72) - evser(int1, rts2[2]-toQ72(shift), toQ72),
+         evser(int2, rts2[1]-toQ72(shift), toQ72) - evser(int2, rts2[2]-toQ72(shift), toQ72)];
+
+// solve
+mat := Transpose(Matrix([row1 cat row3, row2 cat row4]));
+matG7 := ChangeRing(mat/7, GF(7));
+printf "(1/7*matrix of integrals) mod 7 is\n%o\n", matG7;
+kermatG7 := KernelMatrix(matG7);
+printf "kernel matrix of that:\n%o\n", kermatG7;
+kermat := KernelMatrix(mat);
+assert forall{k : k in [1..#ptsH]
+                | Determinant(Matrix([[kermatG7[i,1]*ptsHmod71[k][3] + kermatG7[i,2]*ptsHmod71[k][1],
+                                       kermatG7[i,3]*ptsHmod72[k][3] + kermatG7[i,4]*ptsHmod72[k][1]]
+                                         : i in [1..2]])) ne 0};
+printf "verified that killing differentials are transversal mod 7\n";
+printf " at all points mod 7 coming from known points\n";
+printf "this implies that there are no other points in these residue classes\n\n\n";
+
+printf "Dealing with C_288a1...\n\n";
+
+// Look at twist coming from 188a1.
+// This has j = 12^3, so we need to figure out the quadratic twist separately.
+K<i> := NumberField(x^2+1);
+OK := Integers(K);
+PK<X> := PolynomialRing(K);
+E := EllipticCurve("288a1");
+pol := Factorization(DivisionPolynomial(E, 13))[1,1];
+assert Degree(pol) eq 12;
+ptX13 := rep13(E);
+L := Universe(Eltseq(ptX13));
+// fix embedding of K = Q(i) into L
+KtoL := hom<K -> L | Roots(x^2+1, L)[1,1]>;
+// factorization of 13-division polynomial
+factpol := [a[1] : a in Factorization(PK!pol)];
+// it splits into two factors of degree 6
+assert forall{p : p in factpol | Degree(p) eq 6};
+// find factors with roots in L
+idx := [j : j in [1..#factpol]
+          | HasRoot(Polynomial([KtoL(c) : c in Coefficients(factpol[j])]))];
+assert #idx eq 1; // there is exactly one,
+pol1 := factpol[idx[1]]; // which we call pol1;
+KK<s> := ext<K | pol1>; // take the corresponding extension of K
+rts := [r[1] : r in Roots(DefiningPolynomial(L), KK)];
+// L has 6 maps to KK
+assert #rts eq 6;
+// fix one of them
+toKK := hom<L -> KK | rts[1]>;
+// base-change ptX13 to KK
+ptX13KK := X1_13(KK)![toKK(c) : c in Eltseq(ptX13)];
+vc := K!vcoord(ptX13KK); // v-coordinate of this point
+
+assert Order(2, 13) eq 12; // 2 is a primitive root mod 13
+// get the duplication function on the x-coordinate on E
+dup := Evaluate(dp[1]/dp[3], [x,0,1])
+        where dp := DefiningPolynomials(MultiplicationByMMap(E, 2));
+assert Evaluate(pol1, s) eq 0; // x-coordinate of one 13-torsion point
+// x-coordinates of points obtained from one point of order 13 by repeated doubling
+xcseq := [j eq 1 select s else Evaluate(dup, Self(j-1)) : j in [1..12]];
+// 2^6 = -1 mod 13, so get the same x-coordinates after 6 steps
+assert xcseq[1..6] eq xcseq[7..12];
+// Take trace under multiplication by 3 = 2^4 (3 is a cube root mod 13).
+sum1 := &+xcseq[[1,5,9]]; sum2 := &+xcseq[[2,6,10]];
+assert sum1 + sum2 eq 0;
+// The traces live in the correct quadratic field, so
+// twist is given by sum1^2 = sum2^2.
+twist := K!(sum1^2);
+
+// Construct equation for twist.
+num := vc*(X^3 - 3*X - 1) - 9*X*(X+1);
+den := X^3 + 3*X^2 - 1 + vc*X*(X+1);
+H := HyperellipticCurve(twist*((num  + 2*den)^2 + 4*den^2));
+ptH := H![0, 0];
+vmap := num/den;
+assert Evaluate(vmap, 0) eq vc;
+
+// somewhat simpler equation
+fH1 := 12*i*X^5 + (30*i + 33)*X^4 + 66*X^3 + (-30*i + 33)*X^2 - 12*i*X;
+H1 := HyperellipticCurve(fH1);
+flag, toH1 := IsIsomorphic(H, H1); assert flag; // check isomorphism
+vmapH1 := Evaluate(vmap, Evaluate(dp[1]/dp[3], [X,0,1]))
+            where dp := DefiningPolynomials(Inverse(toH1));
+
+J1 := Jacobian(H1);
+printf "computing upper bound for rank of J(K)...\n";
+assert RankBound(J1) eq 2;
+printf " ... bound is 2\n";
+
+// known points
+ptsH1 := [H1| [1, 0, 0], [0, 0], [-1, 0],
+              [1/6*(4*i - 3), 35/36], [1/6*(4*i - 3), -35/36],
+              [1/25*(24*i - 18), 1/3125*(1848*i + 4914)],
+              [1/25*(24*i - 18), 1/3125*(-1848*i - 4914)],
+              [1/25*(24*i - 7), 1/3125*(1848*i - 4914)],
+              [1/25*(24*i - 7), 1/3125*(-1848*i + 4914)] ];
+
+// Do a bit of Mordell-Weil sieving:
+// Consider reductions mod suitable primes (above p = 5, 7, 11, 17, 23, 29, 43).
+pseq := [p: p in PrimesInInterval(5,50) | p notin {2,3,13, 19,31,37,41,47}];
+prseq := &cat[[a[1] : a in Decomposition(OK, p)] : p in pseq];
+idxseq := func<p | [j : j in [1..#prseq] | TwoElementNormal(prseq[j]) eq p]>;
+resseq := [<F, mF> where F, mF := ResidueClassField(pr) : pr in prseq];
+Cseq := [HyperellipticCurve(Polynomial([r[2](c) : c in Coefficients(fH1)]))
+           : r in resseq];
+Jseq := [Jacobian(C) : C in Cseq];
+Gseq := [<G, mG> where G, mG := AbelianGroup(J) : J in Jseq];
+
+// First check torsion.
+assert GCD([Exponent(e[1]) : e in Gseq]) eq 2;
+assert Min([#Invariants(e[1]) : e in Gseq]) eq 2;
+printf "torsion maps into Z/2Z x Z/2Z and dim J[2] = 2,\n";
+printf " so J(K) is isomorphic to Z/2Z x Z/2Z x Z x Z\n";
+MW := AbelianGroup([2,2,0,0]);
+// likely generators of MW group, isom. to Z/2Z x Z/2Z x Z x Z
+gensJ := [ elt<J1 | X + 1, 0, 1>, elt<J1 | X^2 + X, 0, 2>,
+           elt<J1 | X^2 + i, (3*i - 6)*X + 6*i - 3, 2>,
+           elt<J1 | X^2 + 2*X - i + 1, (3*i + 6)*X - 3*i + 3, 2> ];
+printf "found points generating a subgroup of this shape\n\n";
+// images of points on the curve in the abstract MW group
+ptsH1inMW := [MW| 0, MW.1 + MW.2, MW.1, -2*MW.3 - 2*MW.4, 2*MW.3 + 2*MW.4, MW.1 + MW.2 + 2*MW.4,
+                  MW.1 + MW.2 - 2*MW.4, MW.1 - 2*MW.3, MW.1 + 2*MW.3];
+MWtoJ := map<MW -> J1 | g :-> &+[s[j]*gensJ[j] : j in [1..#gensJ]] where s := Eltseq(g)>;
+// check
+assert forall{j : j in [1..#ptsH1] | ptsH1[j] - H1![1,0,0] eq MWtoJ(ptsH1inMW[j])};
+
+// reduce polynomial; re = <F, mF> as in resseq
+polred := func<pol, re | Polynomial([re[1]| re[2](c) : c in Coefficients(pol)])>;
+// reduce point on J1
+ptJred := func<pt, re, Jred | elt<Jred | polred(pt[1], re), polred(pt[2], re), pt[3]>>;
+// reduce point on H1
+ptHred := func<pt, re, Cred | Cred![re[2](c) : c in s]
+                                where s := [g*pt[1], g^3*pt[2], g*pt[3]]
+                                where _, g := IsPrincipal(&*[Parent(1*OK)| a[1]^Max(0,-a[2]) : a in f])
+                                where f := Factorization(pt[1]*OK + pt[3]*OK)>;
+
+ptJredseq := [*[ptJred(pt, resseq[j], Jseq[j]) : pt in gensJ] : j in [1..#prseq]*];
+
+// set up homomorphism MW --> product of the groups mod pr
+G, injs, projs := DirectProduct([e[1] : e in Gseq]);
+MWtoG := hom<MW -> G | [&+[injs[j](ptJredseq[j,k] @@ Gseq[j,2]) : j in [1..#prseq]]
+                         : k in [1..#gensJ]]>;
+// check saturation at various primes
+printf "Checking that known subgroup of MW group is saturated at relevant primes...\n";
+for p in PrimeDivisors(Invariants(G)[#Invariants(G)]) do
+  _, qmp := quo<G | p*G>;
+  assert Kernel(MWtoG*qmp) eq p*MW; // also shows rank is >= 2
+  printf "  subgroup is saturated at %o\n", p;
+end for;
+printf "\n";
+
+jmap := Evaluate(jv, vmapH1);
+cnumj := Coefficients(Numerator(jmap));
+cdenj := Coefficients(Denominator(jmap));
+
+function relevant_points_1(p)
+  // find points mod p = 1 mod 4 (= pairs of points mod the two primes above p)
+  // with "rational" j-invariants
+  idx := idxseq(p);
+  assert #idx eq 2;
+  assert [a[1] : a in Decomposition(OK, p)] eq prseq[idx];
+  Fp1, toFp1 := Explode(resseq[idx[1]]);
+  Fp2, toFp2 := Explode(resseq[idx[2]]);
+  Hmodp1 := Cseq[idx[1]];
+  Hmodp2 := Cseq[idx[2]];
+  Jmodp1 := Jseq[idx[1]];
+  Jmodp2 := Jseq[idx[2]];
+  G1, mG1 := Explode(Gseq[idx[1]]);
+  G2, mG2 := Explode(Gseq[idx[2]]);
+  Gp, injsGp, projsGp := DirectProduct([G1, G2]);
+  printf "group structure of J mod %o: %o\n", p, Invariants(Gp);
+  pt0modp1 := Hmodp1![1,0,0];
+  pt0modp2 := Hmodp2![1,0,0];
+  MWtoGp := hom<MW -> Gp | [injsGp[1](ptJredseq[idx[1],k] @@ mG1)
+                             + injsGp[2](ptJredseq[idx[2],k] @@ mG2)
+                            : k in [1..#gensJ]]>;
+  imGp := Image(MWtoGp);
+  printf "group structure of image of J(K): %o, index = %o\n",
+        Invariants(imGp), Index(Gp, imGp);
+  imJp := {<mG1(projsGp[1](g)), mG2(projsGp[2](g))> : g in imGp};
+  j1num := Polynomial([toFp1(c) : c in cnumj]);
+  j2num := Polynomial([toFp2(c) : c in cnumj]);
+  j1den := Polynomial([toFp1(c) : c in cdenj]);
+  j2den := Polynomial([toFp2(c) : c in cdenj]);
+  ptsp := {<pt1, pt2> : pt1 in Points(Hmodp1), pt2 in Points(Hmodp2)
+              | <pt1 - pt0modp1, pt2 - pt0modp2> in imJp
+                  and evj(j1num, j1den, pt1) eq evj(j2num, j2den, pt2)};
+  printf "%o pairs of points on H1 mod %o mapping into image of J(K) and with rational j\n", #ptsp, p;
+  ptGp := {injsGp[1]((pt[1] - pt0modp1) @@ mG1) + injsGp[2]((pt[2] - pt0modp2) @@ mG2)
+            : pt in ptsp};
+  return ptsp, ptGp, MWtoGp;
+end function;
+
+function relevant_points_2(p)
+  // find points mod p = 3 mod 4 with "rational" j-invariants
+  idx := idxseq(p);
+  assert #idx eq 1;
+  idx := idx[1];
+  assert Decomposition(OK, p)[1,1] eq prseq[idx];
+  Fp, toFp := Explode(resseq[idx]);
+  Hmodp := Cseq[idx];
+  Jmodp := Jseq[idx];
+  Gp, mGp := Explode(Gseq[idx]);
+  printf "group structure of J mod %o: %o\n", p, Invariants(Gp);
+  pt0modp := Hmodp![1,0,0];
+  MWtoGp := hom<MW -> Gp | [ptJredseq[idx,k] @@ mGp : k in [1..#gensJ]]>;
+  imGp := Image(MWtoGp);
+  printf "group structure of image of J(K): %o, index = %o\n",
+         Invariants(imGp), Index(Gp, imGp);
+  imJp := {mGp(g) : g in imGp};
+  jnum := Polynomial([toFp(c) : c in cnumj]);
+  jden := Polynomial([toFp(c) : c in cdenj]);
+  ptsp := {pt : pt in Points(Hmodp)
+              | pt - pt0modp in imJp and evj(jnum, jden, pt)[1] in GF(p)};
+  printf "%o points on H mod %o mapping into image of J(K) and with rational j\n", #ptsp, p;
+  ptGp := {(pt - pt0modp) @@ mGp : pt in ptsp};
+  return ptsp, ptGp, MWtoGp;
+end function;
+
+function relevant_points(p)
+  assert p notin {2,3,13};
+  idx := idxseq(p);
+  assert #idx in {1,2};
+  if #idx eq 1 then
+    return relevant_points_2(p);
+  else
+    return relevant_points_1(p);
+  end if;
+end function;
+
+HT := AssociativeArray(Integers());
+
+printf "Collecting sieving information...\n";
+for p in pseq do
+  time pts, ptsG, toG := relevant_points(p);
+  HT[p] := <pts, ptsG, toG>;
+end for;
+printf "\n";
+
+n := 2;
+Q, mq := quo<MW | 2*MW>;
+survs := Set(Q);
+
+// This function does one step in the MW sieve lifting:
+// survs is a subset of Qold = MW/nold*MW, mqold is the quotient map MW --> Qold,
+// q is a prime; we lift to Q = MW/n*MW with n = nold*q.
+function lift(survs, mqold, nold, q)
+  Qold := Universe(survs); // MW/nold*MW
+  n := nold*q;             // the new n
+  Q, mq := quo<MW | n*MW>; // the new quotient Q
+  QtoQold := hom<Q -> Qold | [mqold(g @@ mq) : g in OrderedGenerators(Q)]>;
+  function lift1(s)
+    // find all compatible lifts of one element s
+    surv := {l + k : k in Kernel(QtoQold)} where l := s @@ QtoQold; // the preimage of s in Q
+    for p in Keys(HT) do
+      // for each prime, restrict to subset of elements compatible with local information
+      imJp := Image(HT[p][3]);
+      Qp, mqp := quo<imJp | n*imJp>;
+      imptsp := {mqp(pt) : pt in HT[p][2]};
+      surv := {a : a in surv | mqp(HT[p][3](a @@ mq)) in imptsp};
+    end for;
+    return surv;
+  end function;
+  // collect compatible lifts for all elements of survs
+  return &join{lift1(s) : s in survs}, mq;
+end function;
+
+// This is the ordered list of primes used to build up N multiplicatively,
+// where we want to do the sieving on teh MW group mod N*MW.
+qlist := [3,2,19,3,2];
+
+printf "sieving...\n";
+for q in qlist do
+  printf "next n = %o * %o = %o\n", n, q, n*q;
+  survs, mq := lift(survs, mq, n, q);
+  printf " ==> #survs = %o\n", #survs;
+  n *:= q;
+end for;
+
+// Check the image of the "surviving" classes in the group mod 5.
+assert #{HT[5][3](s @@ mq) : s in survs} eq 3;
+printf "this implies that only relevant residue classes mod 5\n";
+printf " come from the three points corresponding to 288a1\n\n";
+
+// Now do the Chabauty computation over Q_5.
+
+// basis of kernel of reduction
+baskerred := [4*gensJ[3], 4*gensJ[4]];
+// also two independent points in kernel of red.,
+// but not involoving points reducing to infinity
+baskerred := [baskerred[1]+baskerred[2], baskerred[1]-baskerred[2]];
+assert Discriminant(baskerred[1][1]) eq 0;
+  // point is twice ptsH1[5]-ptsH1[1], so = ptsH1[5] - ptsH1[4]
+assert baskerred[1] eq ptsH1[5]-ptsH1[4];
+
+Pws<t> := LaurentSeriesAlgebra(K);
+// evaluate a power series via homomorphism h
+evser := func<ser, x, h | &+[h(Coefficient(ser,j))*x^j
+                              : j in [0..AbsolutePrecision(ser)-1]]>;
+
+Q5 := pAdicField(5);
+iQ5 := Roots(x^2+1, Q5)[1,1];
+F51, toF51 := Explode(resseq[1]);
+F52, toF52 := Explode(resseq[2]);
+
+if GF(5)!iQ5 ne toF51(i) then iQ5 := -iQ5; end if;
+assert GF(5)!iQ5 eq toF51(i) and GF(5)!(-iQ5) eq toF52(i);
+toQ51 := hom<K -> Q5 | iQ5>;
+toQ52 := hom<K -> Q5 | -iQ5>;
+
+toPQ51 := func<pol | Polynomial([toQ51(c) : c in Coefficients(pol)])>;
+toPQ52 := func<pol | Polynomial([toQ52(c) : c in Coefficients(pol)])>;
+bask1 := [<toPQ51(b[1]), toPQ51(b[2])> : b in baskerred];
+bask2 := [<toPQ52(b[1]), toPQ52(b[2])> : b in baskerred];
+
+printf "Computing integrals...\n";
+rts1 := [a[1] : a in Roots(bask1[1,1])];
+assert not IsEmpty(rts1) and forall{r : r in rts1 | GF(5)!r eq -1};
+// baskerred[1] reduces to sum of points with x-coordinate -1 mod pr51
+// expand x near -1 in terms of t = y
+xser := Roots(Evaluate(fH1, PolynomialRing(Pws).1 - 1) - t^2)[1,1];
+assert Valuation(xser) gt 0;
+xser -:= 1;
+// write dx/2y and x dx/2y as series in t times dt, where t = y
+omser1 := Derivative(xser)/(2*t);
+omser2 := xser*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row1 := [evser(int1, toQ51(ptsH1[5][2]), toQ51) - evser(int1, toQ51(ptsH1[4][2]), toQ51),
+         evser(int2, toQ51(ptsH1[5][2]), toQ51) - evser(int2, toQ51(ptsH1[4][2]), toQ51)];
+
+// same for the other completion
+rts2 := [a[1] : a in Roots(bask2[1,1])];
+assert not IsEmpty(rts2) and forall{r : r in rts2 | GF(5)!r eq 0};
+// here point reduces to sum of points with x-coordinate 0 mod pr52
+// expand x near 0 in terms of t = y
+xser := Roots(Evaluate(fH1, PolynomialRing(Pws).1) - t^2)[1,1];
+assert Valuation(xser) gt 0;
+// write dx/2y and x dx/2y as series in t times dt, where t = y
+omser1 := Derivative(xser)/(2*t);
+omser2 := xser*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+// now evaluate at baskerred[1]
+row3 := [evser(int1, toQ52(ptsH1[5][2]), toQ52) - evser(int1, toQ52(ptsH1[4][2]), toQ52),
+         evser(int2, toQ52(ptsH1[5][2]), toQ52) - evser(int2, toQ52(ptsH1[4][2]), toQ52)];
+
+// repeat with baskerred[2]; here points are near (1,*), (-2,*)
+// in both cases, fH1(1) = fH1(-2) = 132 = 4*33, so extend field
+KK := ext<K | Polynomial([-132,0,1])>;
+Pws<t> := LaurentSeriesAlgebra(KK);
+Q25 := UnramifiedExtension(Q5, 2);
+rt := Roots(x^2-132, Q25)[1,1];
+toQ251 := hom<KK -> Q25 | toQ51*Bang(Q5, Q25), rt>;
+toQ252 := hom<KK -> Q25 | toQ52*Bang(Q5, Q25), rt>;
+
+rts1 := [a[1] : a in Roots(Polynomial([toF51(c) : c in Coefficients(baskerred[2][1])]))];
+assert not IsEmpty(rts1) and forall{r : r in rts1 | r eq GF(5)!1};
+yser := Sqrt(Evaluate(fH1, t + 1));
+if Coefficient(yser,0) ne KK.1 then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert Coefficient(yser,0) eq KK.1;
+// write dx/2y and x dx/2y as series in t times dt, where t = x - 1
+omser1 := 1/(2*yser);
+omser2 := (t + 1)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+rts := [a[1] : a in Roots(Polynomial([toQ251(c) : c in Coefficients(baskerred[2][1])]))];
+// now evaluate at baskerred[2]
+row2 := [evser(int1, rts[1]-1, toQ251) - evser(int1, rts[2]-1, toQ251),
+         evser(int2, rts[1]-1, toQ251) - evser(int2, rts[2]-1, toQ251)];
+ChangeUniverse(~row2, Q5);
+
+// same for the other completion
+rts2 := [a[1] : a in Roots(Polynomial([toF52(c) : c in Coefficients(baskerred[2][1])]))];
+assert not IsEmpty(rts2) and forall{r : r in rts2 | r eq GF(5)!-2};
+// baskerred[2] reduces to sum of points with x-coordinate -2 mod pr52
+// expand y in terms of t = x + 2
+yser := Sqrt(Evaluate(fH1, t - 2));
+if Coefficient(yser,0) ne KK.1 then
+  yser := -yser; // take series corresponding to first root
+end if;
+assert Coefficient(yser,0) eq KK.1;
+// write dx/2y and x dx/2y as series in t times dt, where t = x - w
+omser1 := 1/(2*yser);
+omser2 := (t - 2)*omser1;
+// and integrate formally
+int1 := Integral(omser1);
+int2 := Integral(omser2);
+rts := [a[1] : a in Roots(Polynomial([toQ252(c) : c in Coefficients(baskerred[2][1])]))];
+// now evaluate at baskerred[2]
+row4 := [evser(int1, rts[1]+2, toQ252) - evser(int1, rts[2]+2, toQ252),
+         evser(int2, rts[1]+2, toQ252) - evser(int2, rts[2]+2, toQ252)];
+ChangeUniverse(~row4, Q5);
+
+// solve
+mat := Transpose(Matrix([row1 cat row3, row2 cat row4]));
+matG5 := ChangeRing(mat/5, GF(5));
+printf "(1/5*matrix of integrals) mod 5 is\n%o\n", matG5;
+kermatG5 := KernelMatrix(matG5);
+printf "kernel matrix of that:\n%o\n", kermatG5;
+kermat := KernelMatrix(mat);
+// the relevant points mod 5 (one would be enough because of the automorphisms...)
+ptsHmod5 := [<GF(5)!1, GF(5)!0, GF(5)!0>, <GF(5)!0, GF(5)!0, GF(5)!1>, <GF(5)!-1, GF(5)!0, GF(5)!1>];
+assert forall{k : k in [1..3]
+                | Determinant(Matrix([[kermatG5[i,1]*ptsHmod5[k][3] + kermatG5[i,2]*ptsHmod5[k][1],
+                                       kermatG5[i,3]*ptsHmod5[k][3] + kermatG5[i,4]*ptsHmod5[k][1]]
+                                         : i in [1..2]])) ne 0};
+printf "verified that killing differentials are transversal mod 5\n";
+printf " at all points mod 5 coming from the remaining points\n";
+printf "this implies that there are no other points in these residue classes\n";

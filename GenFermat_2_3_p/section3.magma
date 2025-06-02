@@ -1,0 +1,627 @@
+// Magma script that verifies the computational claims in Section 3 of
+// "The generalized Fermat equation with exponents 2, 3, n"
+// by Nuno Freitas, Bartosz Naskrecki and Michael Stoll
+
+// Some functions used later for the computations
+
+function Frey(a, b, d)
+ // Returns the Frey curve E_{(a,b,c)}^{(d)} attached to a solution (a,b,c) of x^2 + y^3 = z^p.
+ // Note that it depends only on a and b (and d).
+ return QuadraticTwist(EllipticCurve([0, 0, 0, 3*b, -2*a]), d);
+end function;
+
+// Find polynomial defining the p-torsion field of an elliptic curve.
+// In most cases, the y-coordinates of the points of order p are distinct.
+// Otherwise, this is true for y-x (at least when p = 3 or 5).
+// Return both resulting polynomials.
+function defpolptorsion(E, p)
+  // E: an elliptic curve
+  // p: an odd prime
+  P2 := PolynomialRing(BaseField(E), 2);
+  pol := DivisionPolynomial(E, p);
+  P := Parent(pol);
+  pol := Evaluate(pol, P2.1);
+  polE := Evaluate(DefiningEquation(E), [P2.1, P2.2, 1]);
+  res1 := Evaluate(Resultant(pol, polE, 1), [0, P.1]);
+  // try y-x
+  res2 := Evaluate(Resultant(pol, Evaluate(polE, [P2.1, P2.2+P2.1]), 1), [0, P.1]);
+  return [res1, res2];
+end function;
+
+// Verify that L Q_l^nr is the inertial field of E over Q_l,
+// where E has potentially good reduction.
+// The inertial field is the smallest extension of Q_l^nr such that
+// E acquires good reduction. So if E has good reduction over L,
+// we are OK. We check in addition that the reduction of the minimal
+// model of E over L has full p-torsion, for given odd p /= l.
+// This implies by Hensel's Lemma that the same is true for E over L
+// and so shows that Q_l(E[p]) is contained in L.
+// If E does not have good reduction over L, then L Q_l^nr cannot
+// be the inertial field, since bad reduction persists under unramified extensions.
+//
+// Note that in the cases where we apply this, we already know that
+// the inertial field of E has the same ramification degree as L (8 over Q_2, 12 over Q_3),
+// which implies that L Q_l^nr cannot be too large.
+// To be on the safe side, we check this condition on E
+// in check_iso_Q2 and check_iso_Q3 below. (For L it is clear from the construction.)
+function check_inertial_field(E, L, p, t)
+  // L: extension of Q_l
+  // p: odd prime different from l
+  // t: trace of Frobenius over L that E is supposed to have
+  //    (this is needed for the proofs of Lemmas 5.2 and 5.3)
+  l := Prime(L);
+  assert IsOdd(p) and p ne l;
+  EL := BaseChange(E, L);
+  // compute reduction information and a minimal model of E over L
+  type, Emin := LocalInformation(EL);
+  if type[2] ne 0 then
+    // minimal disc not a unit --> not the right field
+    return false;
+  end if;
+  // find reduction of minimal model
+  OL := Integers(L);
+  _, red := ResidueClassField(OL);
+  Ered := BaseChange(Emin, Bang(L, OL)*red);
+  assert TraceOfFrobenius(Ered) eq t;
+  // get group structure of its points and check that group contains Z/p x Z/p
+  inv := Invariants(AbelianGroup(Ered));
+  assert #inv eq 2 and IsDivisibleBy(inv[1], p);
+  return true;
+end function;
+
+// Specialize the above for Q_2
+function check_iso_Q2(E, L)
+  // Check that inertial field of E has ramification degree 8
+  // We know that the conductor exponent of E at 2 is 5.
+  // Then the condition is (compare [Kra90] and [FK19])
+  // (v_2(c_4), v_2(Delta)) in {(4, 6), (4, 9), (6, 12), (7, 12)}.
+  E := MinimalModel(E);
+  c4 := cInvariants(E)[1];
+  Delta := Discriminant(E);
+  assert <Valuation(c4, 2), Valuation(Delta, 2)> in {<4, 6>, <4, 9>, <6, 12>, <7, 12>};
+  return check_inertial_field(E, L, 3, -4);
+end function;
+
+// Specialize the above for Q_3
+function check_iso_Q3(E, L)
+  // Check that inertial field of E has ramification degree 12
+  // We know that the conductor exponent of E at 3 is 3.
+  // Then the condition is (compare [Kra90] and [FK19])
+  // (v_3(c_6), v_3(Delta)) in {(3, 3), (6, 9)} with Delta/3^{v_3(Delta)} /= 2, 4 mod 9
+  // or (v_3(c_6), v_3(Delta)) in {(4, 3), (3, 5), (7, 9), (6, 11)}.
+  E := MinimalModel(E);
+  c6 := cInvariants(E)[2];
+  Delta := Discriminant(E);
+  vc6 := Valuation(c6, 3);
+  vD := Valuation(Delta, 3);
+  D9 := Integers()!(Delta/3^vD) mod 9;
+  assert (<vc6, vD> in {<3, 3>, <6, 9>} and D9 notin {2, 4})
+           or <vc6, vD> in {<4, 3>, <3, 5>, <7, 9>, <6, 11>};
+  return check_inertial_field(E, L, 5, -18);
+end function;
+
+
+// This implements a version of Lemma 7.5.
+// We only need the convergence statement, for which the condition c /= 0 in the lemma
+// is not necessary. Also, e will always be 1.
+function radius_of_convergence_for_root_series(rel, prseq)
+  // rel: polynomial in two variables t, x over a number field K
+  // prseq: sequence of pairs <pr, e> where pr is a prime ideal of K and e is its ramification index
+  //        (all prime ideals of the same number field and of the same residue characteristic p)
+  // We assume that rel(x,y) = c x + O(t, x^2) with c /= 0.
+  // We scale rel to get c = 1. Then by Lemma 7.5, there is a unique power series
+  // phi(t) with phi(0) = 0 and rel(t, phi(t)) = 0.
+  // The function returns:
+  // rad: a number such that phi(t) converges whenever v_p(t) > rad.
+  t := Parent(rel).1; x := Parent(rel).2;
+  assert MonomialCoefficient(rel, Parent(rel)!1) eq 0;
+  assert MonomialCoefficient(rel, x) ne 0;
+  rel /:= MonomialCoefficient(rel, x); // make coefficient of x equal to 1
+  valmat := Matrix(Rationals(), [[Min(1000000,
+                                      Max([Valuation(MonomialCoefficient(rel, t^m*x^n), e[1])/e[2]
+                                            : e in prseq]))
+                                   : n in [0..Degree(rel, x)]] : m in [0..Degree(rel, t)]]);
+  // so valmat[1+m, 1+n] = v_p(f_{mn}) when rel(t,x) = sum_{m,n} f_{mn} t^m x^n
+  // determine radius of convergence.
+  // Find smallest v(r) such that the condition for m >= 1 is OK.
+  return -Min([((m-1)*valmat[1+i,1+0]+valmat[1+k,1+m])/((m-1)*i+k)
+                : m in [1..Degree(rel, x)], i in [1..Degree(rel, t)], k in [0..Degree(rel, t)]
+                | (m-1)*i+k gt 0]);
+end function;
+
+// The function check_galrep_constant below does the checking for a given family.
+// This works as follows.
+// We determine a polynomial F(t,x) over Q(t) whose roots correspond to
+// the points of order p on Eab(t). We then check that for each root r
+// of F(0,x) (this polynomial must be squarefree), there is a power series
+// phi_r(r) over Q(r) such that phi_r(0) = r and F(t, phi_r(t)) = 0
+// and such that phi_r converges on Z_l. It is enough to do this for
+// one r from each Q-Galois orbit of roots if we consider all l-adic
+// completions of Q(r).
+// Specializing to any t in Z_l, the absolute Galois group of Q_l acts
+// on the phi_r(t) in the same way as it acts on the roots r, hence we get
+// the same Q_l-Galois representation on Eab(t)[p] for all t in Z_l.
+// More precisely, these representations are all symplectically isomorphic,
+// since the Weil pairing between two p-torsion points is constant along
+// the parameterization via t.
+function check_galrep_constant(Eab, l, p)
+  // Eab: Frey curve E_(a,b,c)^(d) as in Table 1, with a or b constant
+  //      and the other one of the form c + 4*t or c + 8*t with t an indeterminate
+  //      and d fixed.
+  // l: a prime (l = 2 or 3 in the application); work over Q_l
+  // p: an odd prime /= l (p = 3 pr 5 in the application); work with the p-torsion
+  F := BaseField(Eab); // the function field Q(t)
+  PF := PolynomialRing(F);
+  // get polynomials whose splitting field is the 3-torsion field of Eab
+  pols := defpolptorsion(Eab, p);
+  // specialize to t = 0
+  pols0 := [PolynomialRing(Rationals())![Evaluate(c, 0) : c in Coefficients(pol)] : pol in pols];
+  // we need one that has squarefree specialization
+  assert exists(i){i : i in [1..#pols0] | IsSquarefree(pols0[i])};
+    // this assigns to i the position of a suitable polynomial
+  pol0 := pols0[i]; // a squarefree specialization
+  polfact := Factorization(pol0); // factor into irreducibles over Q
+  pol := pols[i];   // the polynomial over Q(t) specializing to pol0
+
+  // Now compute the radius of convergence of the power series for r coming from each factor.
+  for e in polfact do
+    fact := e[1]; // the actual irreducible factor
+    // set up the number field defined by fact and its ring of integers
+    if Degree(fact) eq 1 then
+      // special case
+      K := Rationals(); r := Roots(fact)[1,1];
+    else
+      K<r> := NumberField(fact);
+    end if;
+    assert Evaluate(fact, r) eq 0; // just to be sure...
+    if p eq 3 then
+      OK := Integers(K);
+    else
+      // computing the maximal order can be slow when p = 5...
+      OK := pMaximalOrder(GeneralisedEquationOrder(K), l);
+    end if;
+    // base-change pol to K and shift by r to satisfy assumptions of Lemma 7.5
+    P2K := PolynomialRing(K, 2);
+    polK := hom<Parent(pol) -> P2K | hom<F -> P2K | P2K.1>, P2K.2 + r>(pol);
+    rad := radius_of_convergence_for_root_series(polK, Decomposition(OK, l));
+    if rad ge 0 then
+      // disk of convergence is too small
+      printf "check_galrep_constant: rad = %o is not negative!\n", rad;
+      return false;
+    end if;
+  end for;
+  return true;
+end function;
+
+// Specialize to Q_2.
+function check_galrep_constant_Q2(Eab)
+  return check_galrep_constant(Eab, 2, 3);
+end function;
+
+// Specialize to Q_3.
+function check_galrep_constant_Q3(Eab)
+  return check_galrep_constant(Eab, 3, 5);
+end function;
+
+
+F<t> := FunctionField(Rationals());
+
+// The following functions are used to find the image of a rational function
+// with rational coefficients on Z_l. This image will be of the form
+//  {c + l^v c' t^e : t in Z_l}
+// with c in Z_l (unique mod l^v if e = 1, mod l^(v+f) elese),
+//   c' in Z_l^* (unique mod Z_l^{*e}), v, e >= 1.
+// Here f = 1 + floor(v_l(e) + 1/(l-1)).
+// (In general, the image might be more complicated, but it will be
+//  of this form in all cases of interest to us.)
+// Such a set will be represented as <c, c', v, e>.
+
+// We will use this to check the information in the last column
+// of Tables 1 and 2.
+
+// This prints the set in a nice form.
+procedure print_set(tup, l)
+  c, c1, v, e := Explode(tup);
+  f := e eq 1 select 0 else 1 + Floor(Valuation(e, l) + 1/(l-1));
+  procedure print_c(c)
+    if c ne 0 then
+      vc := Valuation(c, l);
+      c0 := ExactQuotient(c, l^vc);
+      if 2*c0 gt l^(v+f-vc) then c0 -:= l^(v+f-vc); end if;
+      if Abs(c0) eq 1 then
+        if vc gt 0 then
+          printf "%o%o^%o", c0 gt 0 select "" else "-", l, vc;
+        else
+          printf "%o", c;
+        end if;
+      else
+        printf "%o", c0 eq 1 select "" else c0 eq -1 select "-" else c0;
+        if vc gt 0 then
+          printf " %o^%o", l, vc;
+        end if;
+      end if;
+    end if;
+  end procedure;
+  procedure print_c1(c1, flag)
+    // c1 essentially unique mod l^f
+    if f gt 0 and 2*c1 gt l^f then c1 -:= l^f; end if;
+    if flag then // c = 0
+      printf c1 gt 0 select "" else "-";
+    else
+      printf c1 gt 0 select " + " else " - ";
+    end if;
+    if Abs(c1) ne 1 then
+      printf "%o ", Abs(c1);
+    end if;
+  end procedure;
+  if e eq 1 then
+    assert c1 eq 1;
+    print_c(c);
+    print_c1(1, c eq 0);
+    printf "%o^%o Z_%o", l, v, l;
+  else
+    printf "{";
+    print_c(c);
+    print_c1(c1, c eq 0);
+    printf "%o^%o t^%o : t in Z_%o}", l, v, e, l;
+  end if;
+end procedure;
+
+function join_sets(seq, l)
+  // form the union of the sets in the sequence seq
+  // which we assume have e = 1 and the same v
+  v := seq[1,3];
+  assert forall{tup : tup in seq | tup[3] eq v and tup[4] eq 1};
+  // check that the various c's cover a residue class in Z/l^(v-d) Z for some d,
+  // possibly with repetitions
+  R := Integers(l^v);
+  classes := {R!tup[1] : tup in seq};
+  d := Valuation(#classes, l); assert #classes eq l^d;
+  c := Integers()!Rep(classes);
+  assert forall{tup : tup in seq | Valuation(tup[1] - c, l) ge v-d};
+  assert #{R!ExactQuotient(tup[1] - c, l^(v-d)) : tup in seq} eq #R where R := Integers(l^d);
+  return <c, 1, v-d, 1>;
+end function;
+
+Pws := PowerSeriesAlgebra(Rationals(), 20);
+
+// The image of a power series  t^e(1 + a1 t + a2 t^2 + ...)  is  {t^e : t in Z_l}
+// if  min{v_l(a1), v_l(a2), ...} > v_l(e) + 1/(l-1)
+// (this comes from the convergence of  (1 + a1 t + ...)^(1/e) ).
+// This is used in the following function.
+function image_on_Zl(rat, l)
+  // rat: rational function in one variable over Q s.t. rat(0) in Z_l
+  ser := Pws!rat; // power series of rat near zero
+  prec := AbsolutePrecision(ser);
+  num := Numerator(rat);
+  den := Denominator(rat);
+  assert Coefficient(den, 0) ne 0;
+  cc := 1/Coefficient(den, 0);
+  den *:= cc; num *:= cc; // normalize denominator to have constant term 1
+  // lower bound  a + n*b  for Valuation of nth coefficient of ser (if n > deg(num))
+  b := Max([1000] cat Slopes(NewtonPolygon(den, l)));
+  assert Degree(num) lt prec;
+  a := Min([Valuation(c, l) - j*b : j in [0..Degree(num)] |c ne 0 where c := Coefficient(num, j)]);
+  // find e
+  e := Valuation(ser - Coefficient(ser, 0));
+  assert e lt prec;
+  // check condition on valuations
+  v0 := Valuation(Coefficient(ser, e), l);
+  bd := v0 + Valuation(e, l) + 1/(l-1);
+  if forall{n : n in [e+1, prec-1] | Valuation(Coefficient(ser, n), l) gt bd}
+      and a + b*prec gt bd and b ge 0 // make sure the unknown coefficients also satisfy the bound
+  then
+    if e eq 1 then
+      return <Integers()!Integers(l^v0)!Coefficient(ser, 0), 1, v0, 1>;
+    else
+      // find minimal f s.t. 1 + l^f Z_l is contained in Z_l^{*e}
+      f := 1 + Floor(Valuation(e, l) + 1/(l-1));
+      c := Integers()!Integers(l^(v0+f))!Coefficient(ser, 0);
+      c1 := Integers()!Integers(l^f)!(Coefficient(ser, e)/l^v0);
+      return <c, c1, v0, e>;
+    end if;
+  else
+    // split domain Z_l into l classes a + l Z_l
+    return join_sets([image_on_Zl(Evaluate(rat, a+l*t), l) : a in [0..l-1]], l);
+  end if;
+end function;
+
+
+//////////////////////////////////////////////////////////////////////////////
+
+// The following constructs the 3-torsion fields L96 and L288 of 96a1 and 288a1 over Q_2.
+// We will later check that the 3-torsion of 96a1/288a1 indeed splits over L96/L288.
+Q2 := pAdicField(2, 100);
+Q2nr := ext<Q2 | 2>; // the unramified extension of degree 2
+
+L96 := ext<Q2nr | x^8 - 2*x^6 + 4*x^4 + 4*x^2 + 4*x + 2>
+          where x := PolynomialRing(Q2nr).1;
+
+L288 := ext<Q2nr | x^8 + 4*x^7 + 2*x^6 + 4*x^3 + 4*x - 2>
+          where x := PolynomialRing(Q2nr).1;
+
+// The following constructs the 5-torsion fields L27 of 27a1 and L54 of 54a1 over Q_3.
+// We will later check that the 5-torsion of 27a1/54a1 indeed splits over L27/L54.
+Q3 := pAdicField(3, 1000);
+Q3nr<u> := ext<Q3 | 4>; // the unramified extension of degree 4
+
+L27 := ext<Q3nr | x^12 + (3*u^3 + 3*u^2 + 3)*x^9 + (3*u^3 + 3*u^2)*x^8 + (3*u^3 + 3*u^2 - 3)*x^7
+                  + (-3*u^3 - 3*u^2)*x^6 + (-3*u^3 - 3*u^2 - 3)*x^4 - 3*u^3 - 3*u^2>
+          where x := PolynomialRing(Q3nr).1;
+
+L54 := ext<Q3nr | x^12 + (-3*u^3 - 3*u^2 - 3)*x^11 + (-3*u^3 - 3*u^2 + 3)*x^10 + 3*x^9
+                  + (3*u^3 + 3*u^2)*x^8 - 3*x^7 + 3*x^6 + 3*x^5 + (3*u^3 + 3*u^2 + 3)*x^4
+                  + (3*u^3 + 3*u^2 - 3)*x^3 + 3*u^3 + 3*u^2>
+          where x := PolynomialRing(Q3nr).1;
+
+// The fields were constructed as follows. Let E be the relevant elliptic curve over Q.
+// First obtain a polynomial f defining the scheme of points of order 3 or 5 on E.
+// Then construct the splitting field of f over Q_2 or Q_3. This gives a totally ramified
+// extension of degree 8, resp. 12, over an unramified extension of Q_2 or Q_3.
+// Finally, reduce the coefficients of the defining polynomial of the ramified extension
+// mod 8 or mod 9 to get the polynomials used above.
+// That the fields are correct is checked in the code below.
+
+//////////////////////////////////////////////////////////////////////////////
+
+// /*
+printf "\n";
+printf "==================================================================\n";
+printf "VERIFICATION OF THE COMPUTATIONS IN SECTION 3\n";
+printf "==================================================================\n\n\n";
+
+printf "Theorem 3.1 and following text\n";
+printf "------------------------------\n\n";
+
+// We first check that L96 is the 3-torsion field of 96a1 over Q_2
+// and that L288 is the 3-torsion field of 288a1 over Q_2.
+printf "Checking that fields over Q_2 are correct... ";
+assert check_iso_Q2(EllipticCurve("96a1"), L96);
+assert check_iso_Q2(EllipticCurve("288a1"), L288);
+printf "--> OK.\n";
+
+printf "Checking that L_{2,96} and L_{2,288} are not isomorphic... ";
+assert not check_iso_Q2(EllipticCurve("288a1"), L96);
+printf "--> OK.\n";
+
+// Dito for the fields over Q_3.
+printf "Checking that fields over Q_3 are correct... ";
+assert check_iso_Q3(EllipticCurve("27a1"), L27);
+assert check_iso_Q3(EllipticCurve("54a1"), L54);
+printf "--> OK.\n";
+
+printf "Checking that L_{3,27} and L_{3,54} are not isomorphic... ";
+assert not check_iso_Q3(EllipticCurve("54a1"), L27);
+printf "--> OK.\n\n";
+
+// Now the text following the proof of Theorem 3.1.
+printf "Checking that inertial fields over Q_2 of 96a1 and 864c1 agree... ";
+assert check_iso_Q2(EllipticCurve("864c1"), L96);
+printf "--> OK.\n";
+
+printf "Checking that inertial fields over Q_2 of 288a1, 864a1 and 864b1 agree... ";
+assert check_iso_Q2(EllipticCurve("864a1"), L288);
+assert check_iso_Q2(EllipticCurve("864b1"), L288);
+printf "--> OK.\n";
+
+printf "Checking that inertial fields over Q_3 of 27a1, 864b1 and 864c1 agree... ";
+assert check_iso_Q3(EllipticCurve("864b1"), L27);
+assert check_iso_Q3(EllipticCurve("864c1"), L27);
+printf "--> OK.\n";
+
+printf "Checking that inertial fields over Q_3 of 54a1 and 864a1 agree... ";
+assert check_iso_Q3(EllipticCurve("864a1"), L54);
+printf "--> OK.\n\n";
+
+// We now proceed to verify that the Frey curves have constant mod-p Galois
+// representation within the residue classes given in Tables 1 and 2
+// and that they have the correct inertial fields when the associated
+// curve from the list has maximal conductor exponent.
+
+// Note that we only need to check that the Galois representation
+// is constant for one value of d, since changing d twists all reps
+// in the family in the same way. For this purpose, we can take d = 1
+// even when this is not among the twists we are really interested in.
+// (We still have to check later that the reps are isomorphic among
+//  the relevant different d's, though.)
+
+
+printf "Table 1\n";
+printf "-------\n\n";
+
+// We note that multiplying a by (1 + 4z)^3 and b by (1 + 4z)^2 for some z in Z_2
+// induces an unramified quadratic twist over Q_2.
+// Since we only need the Galois representations to be isomorphic up to
+// unramified quadratic twist, we are free to apply such twists to the Frey curves.
+// So we can either multiply a by an arbitary element in 1 + 4Z_2
+// or b by an arbitary element in 1 + 8Z_2.
+// Since at least one of a and b is odd,
+// we can fix a = 1 or a = -1 and vary b in its class mod 8,
+// or else we fix b = 1, -1, 3 or -3 and vary a in its class mod 4.
+
+// We also check the exponent of the conductor (for one curve in each family).
+// (For this, we have to consider the correct twists, up to unramified ones.)
+
+// i_2 = 1: special case, since specialization at t = 0 is degenerate
+// This can be dealt with using the theory of the Tate curve;
+// see Proposition 5.4.
+
+// i_2 = 2, 3: we fix b and set a = 8*t, 4 + 8*t, 2 + 8*t or -2 + 8*t
+// (need to split in two classes mod 8 for a to get convergence).
+printf "Checking rows i_2 = 2, 3 of Table 1 with a and b fixed mod 8 --> ";
+curves := [Frey(a+8*t, b, 1) : a in [0, 4, 2, -2], b in [1, -1, 3, -3]];
+assert forall{E : E in curves | check_galrep_constant_Q2(E)};
+curves0 := [Frey(a, b, d) : a in [0, 4, 2, -2], b in [1, -3], d in [1, -1]]
+            cat [Frey(a, b, d) : a in [0, 4, 2, -2], b in [-1, 3], d in [2, -2]];
+assert forall{E : E in curves0 | LocalInformation(E, 2)[3] eq 5};
+printf "OK\n";
+
+// i_2 = 4: we fix a and set b = 8*t
+printf "Checking row i_2 = 4 of Table 1 with a and b fixed mod 8 --> ";
+curves := [Frey(1, 8*t, 1), Frey(-1, 8*t, 1)];
+assert forall{E : E in curves | check_galrep_constant_Q2(E)};
+curves0 := [Frey(1, 0, -2), Frey(-1, 0, 2)];
+assert forall{E : E in curves0 | LocalInformation(E, 2)[3] eq 0};
+printf "OK\n";
+
+// i_2 = 5, 6, 7: we fix a and set b = 2 + 8*t, -2 + 8*t, 4 + 8*t
+printf "Checking rows i_2 = 5, 6, 7 of Table 1 with a and b fixed mod 8 --> ";
+curves := [Frey(a, b + 8*t, 1) : a in [-1, 1], b in [2, -2, 4]];
+assert forall{E : E in curves | check_galrep_constant_Q2(E)};
+curves0 := [Frey(a, b, d) : a in [-1, 1], b in [2, -2], d in [2, -2]];
+assert forall{E : E in curves0 | LocalInformation(E, 2)[3] eq 5};
+curves0 := [Frey(1, 4, -2), Frey(-1, 4, 2)];
+assert forall{E : E in curves0 | LocalInformation(E, 2)[3] eq 0
+                                   and TraceOfFrobenius(E, 2) in {-2,2}};
+assert TraceOfFrobenius(EllipticCurve("27a1"), 2) eq 0;
+printf "OK\n";
+
+printf "\n";
+
+// Now we compare inertial fields between the various curves
+// with conductor exponent 5 at 2.
+// Note that the twists by d = 1, -3 are unramified,
+// so we can reduce the four possible values of d to two.
+
+printf "Checking inertial fields for row i_2 = 2 --> ";
+assert forall{a : a in [0, 4], b in [1, -3], d in [1, -1]
+                | check_iso_Q2(Frey(a, b, d), L288)};
+assert forall{a : a in [0, 4], b in [3, -1], d in [2, -2]
+                | check_iso_Q2(Frey(a, b, d), L288)};
+printf "isomorphic to L_{2,288}\n";
+printf "Checking inertial fields for row i_2 = 3 --> ";
+assert forall{a : a in [2, -2], b in [1, -3], d in [1, -1]
+                | check_iso_Q2(Frey(a, b, d), L96)};
+assert forall{a : a in [2, -2], b in [3, -1], d in [2, -2]
+                | check_iso_Q2(Frey(a, b, d), L96)};
+printf "isomorphic to L_{2,96}\n";
+printf "Checking inertial fields for row i_2 = 5 --> ";
+assert forall{a : a in [1, -1], b in [2], d in [2, -2]
+                | check_iso_Q2(Frey(a, b, d), L96)};
+printf "isomorphic to L_{2,96}\n";
+printf "Checking inertial fields for row i_2 = 6 --> ";
+assert forall{a : a in [1, -1], b in [-2], d in [2, -2]
+                | check_iso_Q2(Frey(a, b, d), L288)};
+printf "isomorphic to L_{2,288}\n";
+
+printf "\n";
+
+// Check last column
+
+printf "Verifying entries in last column:\n\n";
+// d = 1 is sufficient, since j-invariant does not change under quadratic twist.
+// Note that changing the sign of a corresponds to d = -1.
+// i_2 = 1 follows from the theory of the Tate curve.
+// (Note that j = (12a)^3/c^p with c = 2t, t in Z_2.)
+pairs := [<4*t, 1>, <4*t, -3>, <4*t, 3>, <4*t, -1>,         // i_2 = 2
+          <4*t+2, 1>, <4*t+2, -3>, <4*t+2, 3>, <4*t+2, -1>, // i_2 = 3
+          <1, 8*t>,                                         // i_2 = 4
+          <1, 2+8*t>,                                       // i_2 = 5
+          <1, -2+8*t>,                                      // i_2 = 6
+          <1, 4+8*t>];                                      // i_2 = 7
+for pair in pairs do
+  j := jInvariant(Frey(pair[1], pair[2], 1));
+  printf "(a, b) = (%o, %2o) --> ", Evaluate(pair[1], 0), Evaluate(pair[2], 0);
+  print_set(image_on_Zl(j, 2), 2);
+  printf "\n";
+end for;
+
+printf "\n\n";
+
+printf "Table 2\n";
+printf "-------\n\n";
+
+// Now, an unramified quadratic twist corresponds to multiplying
+// a with u^3 and b with u^2, where u is a 3-adic unit.
+// So when a is not divisible by 3, we can fix a mod 9 (and change the sign),
+// and when b is not divisible by 3, we can fix b mod 3.
+
+// As for Table 1, we can fix one d (= 1).
+
+// We also check the exponent of the conductor (for one curve in each family).
+
+// i_3 = 1: special case, since specialization at t = 0 is degenerate
+// This can be dealt with using the theory of the Tate curve;
+// see Proposition 5.4.
+
+// i_3 = 2, 3, 4: we fix b and set a = 9*t or 3 + 9*t
+printf "Checking rows i_3 = 2, 3, 4 of Table 2 with (a, b) fixed mod (9, 3):\n";
+curves := [Frey(a+9*t, b, 1) : b in [1, -1], a in [0, 3]];
+for E in curves do
+  assert check_galrep_constant_Q3(E);
+  printf ".";
+end for;
+// assert forall{E : E in curves | check_galrep_constant_Q3(E)};
+curves0 := [Frey(a, b, d) : b in [1, -1], a in [0], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 2}; // i_3 = 2
+curves0 := [Frey(a, b, d) : b in [1, -1], a in [3], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 3}; // i_3 = 3, 4
+printf " --> OK\n";
+
+// i_3 = 5, 6, 7, 8: we fix a = 1, 2, 4 and set b = 3*t or b = 1 + 3*t
+printf "Checking rows i_3 = 5, 6, 7, 8 of Table 2 with (a, b) fixed mod (9, 3):\n";
+curves := [Frey(a, b+3*t, 1) : b in [0,1], a in [1,2,4]];
+for E in curves do
+  assert check_galrep_constant_Q3(E);
+  printf ".";
+end for;
+// assert forall{E : E in curves | check_galrep_constant_Q3(E)};
+curves0 := [Frey(a, b, d) : b in [0], a in [1, 2], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 3}; // i_3 = 5
+curves0 := [Frey(a, b, d) : b in [0], a in [4], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 2}; // i_3 = 6
+curves0 := [Frey(a, b, d) : b in [1], a in [1, 4], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 3}; // i_3 = 7
+curves0 := [Frey(a, b, d) : b in [1], a in [2], d in [1, 3]];
+assert forall{E : E in curves0 | LocalInformation(E, 3)[3] eq 2}; // i_3 = 8
+printf " --> OK\n";
+
+printf "\n";
+
+// Now we compare inertial fields between the various curves
+// with conductor exponent 3 at 3.
+// Note that the twists by d = 1, -1, 2, -2 are unramified,
+// so we can reduce the eight possible values of d to two.
+
+printf "Checking inertial fields for row i_3 = 3 --> ";
+assert forall{a : a in [3], b in [1, 4, -2], d in [1, 3]
+                | check_iso_Q3(Frey(a, b, d), L27)};
+printf "isomorphic to L_{3,27}\n";
+printf "Checking inertial fields for row i_3 = 4 --> ";
+assert forall{a : a in [3], b in [-1, -4, 2], d in [1, 3]
+                | check_iso_Q3(Frey(a, b, d), L54)};
+printf "isomorphic to L_{3,54}\n";
+printf "Checking inertial fields for row i_3 = 5 --> ";
+assert forall{a : a in [1, 2], b in [0], d in [1, 3]
+                | check_iso_Q3(Frey(a, b, d), L27)};
+printf "isomorphic to L_{3,27}\n";
+printf "Checking inertial fields for row i_3 = 7 --> ";
+assert forall{a : a in [1, 4], b in [1], d in [1, 3]
+                | check_iso_Q3(Frey(a, b, d), L54)};
+printf "isomorphic to L_{3,54}\n";
+
+printf "\n";
+
+// Check last column
+
+printf "Verifying entries in last column:\n\n";
+// d = 1 is sufficient, since j-invariant does not change under quadratic twist.
+// Note that changing the sign of a corresponds to d = -1.
+// i_3 = 1 follows from the theory of the Tate curve
+// (Note that j = (12a)^3/c^p with c = 3t, t in Z_3.)
+pairs := [<9*t, 1>, <9*t, -1>,    // i_3 = 2
+          <9*t+3, 1>,             // i_3 = 3
+          <9*t+3, -1>,            // i_3 = 4
+          <1, 3*t>, <2, 3*t>,     // i_3 = 5
+          <4, 3*t>,               // i_3 = 6
+          <1, 1+3*t>, <4, 1+3*t>, // i_3 = 7
+          <2, 1+3*t>];            // i_3 = 8
+for pair in pairs do
+  j := jInvariant(Frey(pair[1], pair[2], 1));
+  printf "(a, b) = (%o, %2o) --> ", Evaluate(pair[1], 0), Evaluate(pair[2], 0);
+  print_set(image_on_Zl(j, 3), 3);
+  printf "\n";
+end for;
+
+printf "\n\n";
+

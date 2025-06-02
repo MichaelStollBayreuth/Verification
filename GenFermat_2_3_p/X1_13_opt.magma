@@ -1,0 +1,165 @@
+// Some functions for section8.magma
+
+/* from http://math.mit.edu/~drew/X1/X1opt13.txt :
+N:=13;
+X:=y^2 + (x^3 + x^2 + 1)*y - x^2 - x;
+r:=-x*y + 1;
+s:=1-x*y/(y + 1);
+E:=[s-r*s+1,r*s-r^2*s,r*s-r^2*s,0,0];
+P:=[0,0];
+*/
+
+// Define X_1(13) as a hyperelliptic curve over Q.
+P<x> := PolynomialRing(Rationals());
+X1_13 := HyperellipticCurve(x^2+x, x^3+x^2+1);
+
+// Find a point on X1_13 representing given elliptic curve over Q,
+// over the smallest possible field.
+function rep13(E)
+  pol13 := DivisionPolynomial(E, 13);
+  fact := Factorization(pol13);
+  defpol := fact[1,1];
+  // defpol is a polynomial of minimal degree
+  // with root an x-coordinate of a point of order 13 on E
+  K := NumberField(defpol);
+  if Degree(defpol) eq 1 then // does not really occur...
+    xc := Roots(defpol)[1,1];
+  else
+    xc := K.1; assert Evaluate(defpol, xc) eq 0;
+  end if;
+  // To avoid having to make a quadratic extension
+  // (to get a point of order 13 on E defined),
+  // we make a suitable quadratic twist of E.
+  // This does not change the representative point on X_1(13).
+  PK := PolynomialRing(K, 2);
+  X := PK.1; Y := PK.2;
+  Epol := Evaluate(DefiningPolynomial(E), [X, Y, 1]);
+  // complete the square
+  Dpol := Discriminant(Epol, Y)/4; // y^2 = Dpol(x) defines E
+  // move P to x = 0
+  Dpol := Evaluate(Dpol, [X + xc, Y]);
+  // quadratic twist
+  sq := MonomialCoefficient(Dpol, Parent(Dpol)!1);
+  Dpol := sq^3*Evaluate(Dpol, [X/sq, 0]);
+  // Move E over K to Tate normal form.
+  // move P to (0,0)
+  Epol := Evaluate(Y^2 - Dpol, [X, Y + sq^2]);
+  // move tangent line horizontal
+  a3 := MonomialCoefficient(Epol, Y);
+  assert a3 ne 0;
+  a4 := -MonomialCoefficient(Epol, X);
+  Epol := Evaluate(Epol, [X, Y + a4/a3*X]);
+  // scale to make a2 = a3
+  a2 := -MonomialCoefficient(Epol, X^2);
+  a3 := MonomialCoefficient(Epol, Y);
+  assert a2 ne 0;
+  u := a3/a2;
+  Epol := Evaluate(Epol, [u^2*X, u^3*Y])/u^6;
+  // check
+  a1,a2,a3,a4,a6 := Explode([MonomialCoefficient(Epol, m) : m in [X*Y, X^2, Y, X, 1]]);
+  a2 := -a2;
+  assert a4 eq 0 and a6 eq 0 and a2 eq a3;
+  // check
+  EE := EllipticCurve([a1,a2,a2,0,0]);
+  assert 13*EE![0,0] eq EE!0;
+  // solve for r and s
+  r := a2/(a1-1);
+  s := (a1-1)/(1-r);
+  // solve for x and y
+  y := (1-r)/(1-s) - 1;
+  x := (1-r)/y;
+  // construct point on X_1(13)
+  return X1_13(K)![x,y];
+end function;
+
+// The map point on X1_13 to the v-coordinate on X0_13 = P^1.
+function vcoord(ptX)
+  if ptX[3] eq 0 then
+    return Infinity();
+  end if;
+  xc := ptX[1]/ptX[3];
+  if xc eq 0 or xc eq -1 then
+    return Infinity();
+  end if;
+  return (-xc^3-3*xc^2+1)/xc/(xc+1);
+end function;
+
+// Construct the twist of X_1(13) over X_0(13) given by (d, g).
+function curve(d,g)
+  K0 := Parent(d);
+  K1 := Parent(g);
+  K<w> := ext<K0 | x^2+x+1>;
+  flag, toK := IsIsomorphic(K1, K);
+  assert flag;
+  autK := hom<K -> K | w^2>;
+  P3K<vv,yy,zz> := PolynomialRing(K, 3);
+  Aff3Q<v,y,z> := AffineSpace(K0, 3);
+  P3Q := CoordinateRing(Aff3Q);
+  pol := g*(zz-w)^3*(vv-3*w^2) - autK(g)*(zz-w^2)^3*(vv-3*w);
+  c := MonomialCoefficient(pol, zz^3);
+  if c eq 0 then c := MonomialCoefficient(pol, zz^3*vv); end if;
+  pol *:= 1/c;
+  return Curve(Aff3Q, [d*y^2 - (v+2)^2 - 4, P3Q!pol]);
+end function;
+
+// the j-invariant map from X_0(13) to P^1 in terms of the coordinate v
+jv := (x^2 + 3*x + 9)*(x^4 + 3*x^3 + 5*x^2 - 4*x - 4)^3/(x - 1);
+
+// construct twist of X_1(13) over K lifting point coming from E
+// in X_0(13)(K), where K is as small as possible
+// (for j(E) /= 0, 12^3)
+function twist13(E)
+  jE := jInvariant(E);
+  assert jE notin {0, 12^3};
+  K0 := Parent(jE);
+  PK0 := PolynomialRing(K0);
+  ff := Factorization(PK0!Numerator(jv) - jE*(PK0.1-1));
+  // first factor has minimal degree
+  pol := ff[1,1];
+  if Degree(pol) eq 1 then
+    vc := -Coefficient(pol, 0);
+    K := K0;
+  else
+    K := ext<K0 | pol>;
+    vc := K.1; assert Evaluate(pol, vc) eq 0;
+  end if;
+  // construct equation for twist
+  PK := PolynomialRing(K); X := PK.1;
+  num := vc*(X^3 - 3*X - 1) - 9*X*(X+1);
+  den := X^3 + 3*X^2 - 1 + vc*X*(X+1);
+  H := HyperellipticCurve(((vc+2)^2 + 4)*((num  + 2*den)^2 + 4*den^2));
+  ptH := H![0, (vc+2)^2 + 4];
+  vmap := num/den;
+  assert Evaluate(vmap, 0) eq vc;
+  return H, ptH, vmap;
+end function;
+
+// evaluate j map given as numerator n and denominator d on pt,
+// result is tuple of coordinates on P^1
+function evj(n, d, pt)
+  F := Parent(pt[1]);
+  if pt[3] eq 0 then
+    if Degree(n) gt Degree(d) then
+      return <F!1, F!0>;
+    elif Degree(n) lt Degree(d) then
+      return <F!0, F!1>;
+    else
+      den := F!LeadingCoefficient(d);
+      num := F!LeadingCoefficient(n);
+      if den eq 0 then
+        if num eq 0 then error "0/0"; end if;
+        return <F!1, F!0>;
+      else
+        return <num/den, F!1>;
+      end if;
+    end if;
+  end if;
+  assert pt[3] eq 1;
+  den := Evaluate(d, pt[1]);
+  num := Evaluate(n, pt[1]);
+  if den eq 0 then
+    if num eq 0 then error "0/0"; end if;
+    return <F!1, F!0>;
+  end if;
+  return <num/den, F!1>;
+end function;

@@ -1,0 +1,1250 @@
+// Magma code checking the computational claims in Section 7 of
+// "The generalized Fermat equation with exponents 2, 3, n"
+// by Nuno Freitas, Bartosz Naskrecki and Michael Stoll
+
+// Set this to true to recompute the Selmer groups
+computeSelmer := false;
+
+if computeSelmer then
+  // Selmer group computation assuming Generalized Riemann Hypothesis
+  // (to keep running time reasonable...).
+  SetClassGroupBounds("GRH");
+end if;
+
+// Define Q[x]
+P<x> := PolynomialRing(Rationals());
+
+printf "\n\n";
+printf "=======================================================\n";
+printf "THE CURVES WITH COMPLEX MULTIPLICATION\n";
+printf "=======================================================\n";
+
+// Elliptic curve Chabauty on X^(-1)_ns(11) and X^(-3)_ns(11)
+pol1 := 4*x^3 - 4*x^2 - 28*x + 41; // rhs of equation for X_ns^+(11)
+pol2 := 4*x^3 + 7*x^2 - 6*x + 19;  // negative of rhs for quadratic covering
+// Set up X_ns^+(11) ...
+EH1 := HyperellipticCurve(pol1);
+E1, toE1 := EllipticCurve(EH1);
+// ... and check the claim on its MW group
+MW, MWtoE1, flag1, flag2 := MordellWeilGroup(E1);
+assert flag1 and flag2; // check that computation was successful
+assert Invariants(MW) eq [0]; // group is Z
+assert pt[1]/pt[3] eq 4 where pt := MWtoE1(MW.1) @@ toE1; // generator has x-coordinate 4
+
+// work with 2 \alpha (which is integral) instead of \alpha
+mpol := x^3 - 2*x^2 - 28*x + 82;
+KK<b> := NumberField(mpol); // \alpha = b/2
+assert Evaluate(pol1, b/2) eq 0;
+PK<X> := PolynomialRing(KK);
+P1 := ProjectiveSpace(Rationals(), 1);
+xcoords := {P1|};
+
+// Now do the Elliptic Curve Chabauty computation for each of the four curves.
+printf "\nd = -1, first curve...\n";
+EKH1 := HyperellipticCurve((X-b/2)*PK!pol2);
+EK1, toEK1 := EllipticCurve(EKH1);
+EK1min, toEK1min := MinimalModel(EK1);
+MW1, MW1map, flag1, flag2 := MordellWeilGroup(EK1min);
+assert flag1 and flag2;
+assert Invariants(MW1) eq [0];
+// Set up data as necessary for the Chabauty function
+MW1map1 := map<MW1 -> EK1min | g :-> MW1map(g)>;
+xc := map<EKH1 -> P1 | [FunctionField(EKH1).1, 1]>;
+cov := Inverse(toEK1min)*Inverse(toEK1)*xc;
+points := Chabauty(MW1map1, cov);
+impoints := {cov(MW1map1(g)) : g in points};
+assert impoints eq {P1![1,0]};
+xcoords join:= impoints;
+// OK, only pt at infty here
+
+// look at other value of delta...
+printf "\nd = -1, second curve...\n";
+EKH2 := HyperellipticCurve((4-b/2)*(X-b/2)*PK!pol2);
+EK2, toEK2 := EllipticCurve(EKH2);
+EK2min, toEK2min := MinimalModel(EK2);
+MW2, MW2map, flag1, flag2 := MordellWeilGroup(EK2min);
+assert flag1 and flag2;
+assert Invariants(MW2) eq [0];
+MW2map1 := map<MW2 -> EK2min | g :-> MW2map(g)>;
+xc := map<EKH2 -> P1 | [FunctionField(EKH2).1, 1]>;
+cov := Inverse(toEK2min)*Inverse(toEK2)*xc;
+points := Chabauty(MW2map1, cov);
+impoints := {cov(MW2map1(g)) : g in $1};
+assert impoints eq {P1![5/4, 1]};
+xcoords join:= impoints;
+// only x = 5/4
+
+// (-3)-twist
+printf "\nd = -3, first curve...\n";
+EKH3 := HyperellipticCurve((X-b/2)*3*PK!pol2);
+EK3, toEK3 := EllipticCurve(EKH3);
+EK3min, toEK3min := MinimalModel(EK3);
+MW3, MW3map, flag1, flag2 := MordellWeilGroup(EK3min);
+assert flag1 and flag2;
+assert Invariants(MW3) eq [0, 0];
+MW3map1 := map<MW3 -> EK3min | g :-> MW3map(g)>;
+xc := map<EKH3 -> P1 | [FunctionField(EKH3).1, 1]>;
+cov := Inverse(toEK3min)*Inverse(toEK3)*xc;
+points := Chabauty(MW3map1, cov);
+impoints := {cov(MW3map1(g)) : g in $1};
+assert impoints eq {P1![-2, 1]};
+xcoords join:= impoints;
+// only x = -2
+
+printf "\nd = -3, second curve...\n";
+EKH4 := HyperellipticCurve((4-b/2)*(X-b/2)*3*PK!pol2);
+EK4, toEK4 := EllipticCurve(EKH4);
+EK4min, toEK4min := MinimalModel(EK4);
+MW4, MW4map, flag1, flag2 := MordellWeilGroup(EK4min);
+assert flag1 and flag2;
+assert Invariants(MW4) eq [0, 0];
+MW4map1 := map<MW4 -> EK4min | g :-> MW4map(g)>;
+xc := map<EKH4 -> P1 | [FunctionField(EKH4).1, 1]>;
+cov := Inverse(toEK4min)*Inverse(toEK4)*xc;
+points := Chabauty(MW4map1, cov);
+impoints := {cov(MW4map1(g)) : g in $1};
+assert impoints eq {P1![4, 1]}
+xcoords join:= impoints;
+// only x = 4
+
+printf "This gives the x-coordinates %o\n";
+
+// Now for the remaining curves
+
+// This is the set D of relevant subsets of P^1(Q_2) away from infinity.
+// <a, b, c> stands for the set {a + b t^c : t in Z_2}.
+// (Compare equation (7.2) and Lemma 7.3.)
+disks0 := [ <2^9, 2^11, 1>, <15*2^6, 2^11, 1>, <3*2^9, 2^11, 1>, <-2^6, 2^11, 1>,
+            <12^3, 2^10, 2>, <12^3, 3*2^10, 2>, <12^3, -2^10, 2>, <12^3, -3*2^10, 2> ];
+
+// Defining polynomials for number fields K such that the fiber above the corresponding
+// set is isomorphic to Spec K \tensor Q_2
+pols := [x^12 + 4*x^11 - 16*x^10 - 82*x^9 + 39*x^8 + 402*x^7 + 28*x^6 + 28*x^5
+           + 1062*x^4 - 3096*x^3 - 5736*x^2 - 4472*x - 6972,
+         x^12 - 66*x^10 + 1419*x^8 - 1320*x^7 - 10186*x^6 + 43560*x^5 + 41481*x^4
+           - 312840*x^3 + 289344*x^2 + 649920*x - 1882496,
+         x^12 - 44*x^9 - 264*x^8 - 264*x^7 - 2266*x^6 - 4488*x^5 - 264*x^4
+           - 17644*x^3 - 7128*x^2 + 144*x - 15191,
+         x^12 + 4*x^11 - 88*x^9 + 704*x^7 - 2816*x^5 + 5632*x^3 - 4096*x + 512,
+         x^12 - 22*x^8 + 209*x^4 - 44,
+         x^12 - 792*x^8 + 8910*x^6 - 28512*x^4 - 32076*x^2 - 8019,
+         x^12 - 22*x^8 + 209*x^4 - 44,
+         x^12 - 792*x^8 - 8910*x^6 - 28512*x^4 + 32076*x^2 - 8019];
+
+// Define X_0(11) ...
+X0_11 := SmallModularCurve(11);
+// ... and the j function X_0(11) --> P^1.
+j11 := jInvariant(X0_11, 11);
+
+// j11 = (a(x) + y*b(x))/c(x); extract coefficient polynomials
+den := Evaluate(Denominator(j11), [x,0,1]); // this is c(x)
+num0 := Evaluate(Numerator(j11), [x,0,1]);  // this is a(x)
+num1 := Evaluate(Coefficient(Numerator(j11),2,1), [x,0,1]); // this is b(x)
+
+// Find relation between x-coordinate on X_0(11) and j (compare (7.4)).
+P2<X,j> := PolynomialRing(Rationals(), 2);
+PP2 := PolynomialRing(P2);
+defX0_11 := Evaluate(DefiningEquation(X0_11), [X,PP2.1,1]);
+res := Resultant(defX0_11, Evaluate(num0, X) + PP2.1*Evaluate(num1, X) - j*Evaluate(den, X));
+// The resultant has some irrelevant factors; extract the relevant one.
+polxj := Factorization(res)[2,1]; // this is F(X,j)
+// Express y on X_0(11) in terms of x and j
+yfunc := func<x, j | (j*Evaluate(den,x) - Evaluate(num0,x))/Evaluate(num1,x)>;
+
+// This implements Lemma 7.5:
+function radius_of_convergence(rel, prseq, expo)
+  // rel: polynomial in two variables x, y
+  // prseq: sequence of pairs <pr, e> where pr is a prime ideal and e is its ramification index
+  //        (all prime ideals of the same number field and of the same residue characteristic p)
+  // expo: integer >= 1
+  // We assume that rel(x,y) = -c x + c' y^expo + O(x^2, xy, y^{expo+1}) with c, c' /= 0.
+  // We scale rel to get c' = 1. Then by Lemma 7.5, there are expo power series
+  // phi_0(t), ..., phi_{e-1}(t) with phi_j(0) = 0 and rel(t^expo, phi_j(t)) = 0.
+  // The function returns:
+  // rad: a number such that the phi_j(t) converge whenever v_p(t) > rad
+  // rad1, val: if v_p(t) > rad1, then v_p(phi_j(t)) = val + v_p(t)
+  // (Compare Lemma 7.5)
+  x := Parent(rel).1; y := Parent(rel).2;
+  assert forall{j : j in [0..expo-1] | MonomialCoefficient(rel, y^j) eq 0};
+  assert MonomialCoefficient(rel, x) ne 0 and MonomialCoefficient(rel, y^expo) ne 0;
+  rel /:= MonomialCoefficient(rel, y^expo); // make coefficient of y^expo equal to 1
+  valmat := Matrix(Rationals(), [[Min(1000000,
+                                      Max([Valuation(MonomialCoefficient(rel, x^m*y^n), e[1])/e[2]
+                                            : e in prseq]))
+                                   : n in [0..Degree(rel, y)]] : m in [0..Degree(rel, x)]]);
+  // so valmat[1+m, 1+n] = v_p(f_{mn})
+//   printf "Matrix of valuations:\n%o\n", valmat;
+  // determine radius of convergence:
+  // first find smallest v(r) such that the condition for m >= expo is OK
+  rad := -Min([((m-expo)*valmat[1+i,1+0]+valmat[1+k,1+m])/((m-expo)*i+k)
+                : m in [expo..Degree(rel, y)], i in [1..Degree(rel, x)], k in [0..Degree(rel, x)]
+                | (m-expo)*i+k gt 0]);
+  // now check if this also satisfies conditions for 0 < m < expo
+  // (nothing to do when expo = 1)
+  if expo gt 1 then
+    valF0 := Min([valmat[1+i, 1+0] + i*rad : i in [1..Degree(rel, x)]]);
+    for m := 1 to expo-1 do
+      if exists{k : k in [1..Degree(rel, x)] | valmat[1+k, 1+m] + k*rad le (expo-m)*valF0} then
+        error "rad does not satisfy extra conditions";
+      end if;
+    end for;
+  end if;
+//   printf "Series converges on the disk with rad = %o\n", rad;
+  val := valmat[1+1,1+0]; // valuation of f_{10}
+  rad1 := Max(rad, Max([(val - valmat[1+i,1+0])/(i-1) : i in [2..Degree(rel, x)]]));
+  return rad/expo, rad1/expo, val/expo;
+end function;
+
+// Lemma 7.6
+printf "\n\n";
+printf "=======================================================\n";
+printf "PROOF OF LEMMA 7.6\n";
+printf "=======================================================\n";
+
+// First do the first four sets (where the parameterization is linear).
+for i := 1 to 4 do
+  d := disks0[i];
+  assert d[3] eq 1;
+  // solve F(x_0 + phi_0(t), vaprhi(t)) = 0
+  K := NumberField(pols[i]);
+  roots := Roots(Evaluate(polxj, [x, d[1]]), K);
+  assert not IsEmpty(roots);
+  x0 := roots[1,1];
+  prseq := Decomposition(Integers(K), 2);
+  PK := PolynomialRing(K, 2);
+  // compute radius of convergence of power series etc.
+  r, r1, v := radius_of_convergence(Evaluate(polxj, [x0+PK.2, d[1]+d[2]*PK.1]), prseq, 1);
+  assert r lt 0 and r1 lt 0 and v gt 4/3; // check conditions
+  printf "\nset {%o + %o*t : t in Z_2}: Lemma 7.6 OK\n", d[1], d[2];
+end for;
+// Now do the remaining four (with quadratic parameterization).
+// Since they can be made isomorphic over an extension by scaling t by a unit,
+// it suffices to // work with one of them.
+d := disks0[5];
+assert d[3] eq 2;
+// find x0
+K := NumberField(x^6 + 2*x^5 - 2*x^4 + 4*x^3 - 10*x^2 - 16*x - 7);
+roots := Roots(Evaluate(polxj, [x, d[1]]), K);
+assert not IsEmpty(roots);
+x0 := roots[1,1];
+prseq := Decomposition(Integers(K), 2);
+PK := PolynomialRing(K, 2);
+rel := Evaluate(polxj, [x0 + PK.2, d[1] + d[2]*PK.1]);
+r, r1, v := radius_of_convergence(rel, prseq, 2);
+assert r lt 0 and r1 lt 0 and v gt 4/3; // check conditions
+for d in disks0[5..8] do
+  printf "\nset {%o + %o*t^2 : t in Z_2}: Lemma 7.6 OK\n", d[1], d[2];
+end for;
+
+// Lemma 7.7
+printf "\n\n";
+printf "=======================================================\n";
+printf "PROOF OF LEMMA 7.7\n";
+printf "=======================================================\n";
+
+// set up the duplication map on X_0(11)
+bEQ := bInvariants(X0_11);
+dupdenEQ := P![bEQ[3], 2*bEQ[2], bEQ[1], 4];
+dupnumEQ := P![-bEQ[4], -2*bEQ[3], -bEQ[2], 0, 1];
+
+// use this to halve points
+function halve(xc)
+  den := ChangeRing(dupdenEQ, Parent(xc));
+  num := ChangeRing(dupnumEQ, Parent(xc));
+  return Roots(num - den*xc)[1,1];
+end function;
+
+// helper function
+function product_of_seqs(seqseq)
+  // seqseq is a sequence [s1, s2, ..., sn] of sequences
+  // returns a sequence whose elements are all tuples <a1, a2, ..., an>
+  // with ai in si for i = 1..n
+  if IsEmpty(seqseq) then
+    return [<>];
+  end if;
+  last := seqseq[#seqseq];
+  if IsEmpty(last) then
+    return [];
+  end if;
+  prod := product_of_seqs(Prune(seqseq));
+  return [Append(tup, a) : tup in prod, a in last];
+end function;
+
+// Verify incompatibility of sets with Selmer group for a specific curve.
+function check_exclude(pol0, L, SelEgens, centers)
+  // pol0 = polxj(x, j(E))
+  // L = number field obtained by adjoining a root of pol0
+  // SelEgens = representatives of generators of the 2-Selmer group
+  //            of X_0(11) over L, in L[theta] where
+  //            theta^3 - 4*theta^2 - 160*theta - 1264 = 0
+  // centers = centers of the sets to be excluded
+  // (image in L[theta]^* mod squares is constant on the sets,
+  //  so it suffices to check at one point in the set)
+
+  // transform to algebra modulo 2-division polynomial
+  A<th> := quo<PolynomialRing(L) | ChangeRing(DivisionPolynomial(X0_11, 2), L)>;
+  toA := hom<Universe(SelEgens) -> A | th*4>;
+
+  printf "setting up map to 2-adic square classes...\n";
+  // places above 2
+  pr2seq := [e[1] : e in Decomposition(Integers(L), 2)];
+  mseq := [LocalTwoSelmerMap(A, pr) : pr in pr2seq];
+  imSel := [<m(toA(g)) : m in mseq> : g in SelEgens];
+  V := KSpace(GF(2), #SelEgens);
+  imSelset := {<&+[Codomain(mseq[j]) | imSel[i,j] : i in [1..#SelEgens] | v[i] ne 0]
+                  : j in [1..#pr2seq]>
+                : v in V};
+  // check injectivity of map from 2-Selmer group to local square classes
+  assert #imSelset eq 2^#SelEgens;
+  printf "Map from 2-Selmer group to 2-adic square classes is injective.\n";
+
+  // construct completions
+  printf "setting up completions of L...\n";
+  Kseq := [<K, toK> where K, toK := Completion(L, pr : Precision := 20*RamificationIndex(pr))
+            : pr in pr2seq];
+  // find points in fiber above j(E)
+  rtseq := [* [r[1] : r in Roots(pol0, Kseq[i,1])
+                    | Degree(AbsoluteMinimalPolynomial(r[1]))
+                        eq Degree(pr2seq[i])*RamificationIndex(pr2seq[i])]
+              : i in [1..#pr2seq] *];
+  rtnum := [#rseq : rseq in rtseq];
+
+  // check fiber above some j value
+  function check_fiber(j1)
+    pol1 := Evaluate(polxj, [x, j1]);
+    rtseq := [* [r[1] : r in Roots(pol1, Kseq[i,1])
+                      | Degree(AbsoluteMinimalPolynomial(r[1]))
+                          eq Degree(pr2seq[i])*RamificationIndex(pr2seq[i])]
+                : i in [1..#pr2seq] *];
+    // sanity check: fiber is isomorphic to that above j(E)
+    assert [#rts : rts in rtseq] eq rtnum;
+    // find the square classes
+    imseq := [* [mseq[i]((r @@ Kseq[i,2]) - th) : r in rtseq[i]] : i in [1..#pr2seq] *];
+    allims := product_of_seqs(imseq);
+    // and check all possible combinations if they map into the image of the Selmer group
+    compatible := [im : im in allims | im in imSelset];
+    return IsEmpty(compatible);
+  end function;
+
+  for c in centers do
+    printf "checking set around %o...\n", c;
+    assert check_fiber(c);
+    printf "... successful\n";
+  end for;
+  printf "\n";
+  return [* imSelset, pr2seq, Kseq, mseq, th *];
+end function;
+
+// 96a1
+printf "\nExclude sets for E = 96a1\n";
+E := EllipticCurve("96a1");
+// points in the sets that can be excluded
+centers := [-2^9];
+
+j0 := jInvariant(E);
+pol0 := Evaluate(polxj, [x, j0]);
+// construct number field corresponding to fiber of j above j0
+L := NumberField(x^12 - 4*x^11 - 264*x^7 + 66*x^6 - 132*x^5 - 2112*x^4
+                  - 1320*x^3 - 660*x^2 - 6240*x - 8007);
+OL := LLL(Integers(L));
+assert HasRoot(pol0, L);
+
+// compute the Selmer group or use precomputed generators
+if computeSelmer then
+  printf "Computing 2-Selmer group over L...\n";
+  time Sel, mSel := TwoSelmerGroup(BaseChange(X0_11, L));
+  SelEgens := [gen @@ mSel : gen in OrderedGenerators(Sel)];
+else
+  RR := PolynomialRing(L);
+  _<theta> := quo<RR | RR![-1264, -160, -4, 1]>;
+  SelEgens := [
+  1/42901833821530816*(634121854883*L.1^11 - 1844986780913*L.1^10 -
+      4749839447647*L.1^9 - 3029795316833*L.1^8 + 27210810277779*L.1^7 -
+      75100685146401*L.1^6 - 91124404639147*L.1^5 + 143682386252181*L.1^4 +
+      134276828832375*L.1^3 + 466198472598169*L.1^2 - 884995150415903*L.1 -
+      661524934907815)*theta^2
+  + 1/10725458455382704*(-2098892635785*L.1^11 +
+      4910026316730*L.1^10 + 14149150814173*L.1^9 + 25828514324540*L.1^8 -
+      55585439980977*L.1^7 + 324565954193176*L.1^6 + 591894150456411*L.1^5 +
+      529445359915500*L.1^4 + 427015241440153*L.1^3 + 1296351575685266*L.1^2 +
+      7037014422842067*L.1 + 3806106834371006)*theta
+  + 1/5362729227691352*(-121695694615*L.1^11 + 4812053524247*L.1^10 +
+      11454686625387*L.1^9 - 17314149612025*L.1^8 - 245405546827961*L.1^7 -
+      905884889545049*L.1^6 - 1535161236223857*L.1^5 - 3459271654805695*L.1^4 -
+      9547945670953939*L.1^3 - 27770002007503531*L.1^2 - 4187594437339403*L.1 +
+      19128350600091953),
+  1/42901833821530816*(-431958486201*L.1^11 - 899836031595*L.1^10 +
+      8807318977967*L.1^9 + 12767178230309*L.1^8 + 3461104765195*L.1^7 +
+      48471596209477*L.1^6 + 466490511429733*L.1^5 + 150220589550551*L.1^4 +
+      27996542336197*L.1^3 + 1772888984003327*L.1^2 + 544397373334029*L.1 -
+      1631400728312109)*theta^2
+  + 1/21450916910765408*(-309679565019*L.1^11 +
+      13082007681255*L.1^10 - 44890442178187*L.1^9 - 33183762783789*L.1^8 -
+      3778106216907*L.1^7 + 341892467617731*L.1^6 - 2483533326228325*L.1^5 +
+      720850260882985*L.1^4 + 3016827600259675*L.1^3 - 9410208237156659*L.1^2 -
+      1599445635797577*L.1 + 20663427479958537)*theta
+  + 1/10725458455382704*(30404340508619*L.1^11 - 60307723498999*L.1^10 -
+      289874079572797*L.1^9 - 76653420979959*L.1^8 + 27405733188427*L.1^7 -
+      4948968874226755*L.1^6 - 8479466774295139*L.1^5 + 15384240709449303*L.1^4 -
+      34262135384851211*L.1^3 - 8358707362912985*L.1^2 + 85291639539628905*L.1 +
+      35680102969443015),
+  1/85803667643061632*(839320741081*L.1^11 - 3007308547105*L.1^10 -
+      9387019071459*L.1^9 + 17744257073787*L.1^8 + 50565561262321*L.1^7 -
+      167046597595209*L.1^6 - 23489129347249*L.1^5 + 1706917004994977*L.1^4 +
+      642596461949379*L.1^3 - 1266993721201907*L.1^2 + 9600330410252235*L.1 +
+      10884921958785509)*theta^2
+  + 1/10725458455382704*(-146187228301*L.1^11 -
+      1638057520868*L.1^10 + 14826281494065*L.1^9 - 17034693361814*L.1^8 -
+      23567993969299*L.1^7 + 17990131366896*L.1^6 + 548183697726171*L.1^5 -
+      1515060125397422*L.1^4 - 631926249546443*L.1^3 + 4080839184532076*L.1^2 -
+      7299525397577667*L.1 - 4667158765307110)*theta
+  + 1/10725458455382704*(-3465763161857*L.1^11 + 36974946115337*L.1^10 +
+      28029987808331*L.1^9 - 257667125625859*L.1^8 - 908456164960741*L.1^7 +
+      238302851666741*L.1^6 - 5829401758618175*L.1^5 - 23737287189462089*L.1^4 -
+      31225163889145067*L.1^3 - 27837068999723477*L.1^2 - 146081399824395991*L.1 -
+      221494462761029353),
+  1/42901833821530816*(-316913733495*L.1^11 + 112606293445*L.1^10 +
+      4594405885313*L.1^9 + 2577411465969*L.1^8 + 1787459739763*L.1^7 +
+      40658688887785*L.1^6 + 244653218693455*L.1^5 - 32866734310041*L.1^4 +
+      480144037028343*L.1^3 + 572486796694051*L.1^2 + 1574767411509921*L.1 +
+      416827227064331)*theta^2
+  + 1/21450916910765408*(711239198427*L.1^11 +
+      32554212579*L.1^10 - 17622207617801*L.1^9 + 24956704926563*L.1^8 -
+      21656379160101*L.1^7 - 79711723277585*L.1^6 - 875083119997031*L.1^5 +
+      2022361071555609*L.1^4 - 3113280462586851*L.1^3 + 57174485695193*L.1^2 -
+      2651998877006419*L.1 + 5353058537363497)*theta
+  + 1/5362729227691352*(14367794603495*L.1^11 - 32464858427479*L.1^10 -
+      107911523749957*L.1^9 - 33840299409409*L.1^8 + 52951125569343*L.1^7 -
+      2996477296600845*L.1^6 - 5089742324818679*L.1^5 + 1804087780170499*L.1^4 -
+      21952726071757471*L.1^3 - 28569430475977539*L.1^2 - 19001328189293267*L.1 -
+      34581108118918659),
+  1/85803667643061632*(1986072344743*L.1^11 - 2656594902543*L.1^10 -
+      18667296354869*L.1^9 - 21017856627171*L.1^8 - 2883193943845*L.1^7 -
+      395092006447775*L.1^6 - 977425282854023*L.1^5 - 374467196846465*L.1^4 -
+      2453735922811411*L.1^3 - 5673719049913509*L.1^2 - 4233076521807583*L.1 -
+      2652782220494965)*theta^2
+  + 1/10725458455382704*(-3163280916713*L.1^11 +
+      6265243372291*L.1^10 + 28566869374049*L.1^9 + 12891978389197*L.1^8 -
+      41522928832089*L.1^7 + 633692223252849*L.1^6 + 1186306901470993*L.1^5 -
+      723227169069003*L.1^4 + 2644620923736899*L.1^3 + 7614463921519431*L.1^2 -
+      1127873731210587*L.1 - 5025842404774341)*theta
+  + 1/5362729227691352*(-6631223243747*L.1^11 - 26518350440275*L.1^10 +
+      159921572343123*L.1^9 + 249945412957919*L.1^8 + 240454979593901*L.1^7 +
+      839915866437735*L.1^6 + 10679773791165735*L.1^5 + 8199162335234703*L.1^4 +
+      11208720704817973*L.1^3 + 52340406319466585*L.1^2 + 68347339755821411*L.1 +
+      54147543628320041)
+  ];
+end if;
+
+info96a1 := check_exclude(pol0, L, SelEgens, centers);
+L96a1 := L;
+printf "So we have reduced the sets for 96a1 to 15*2^6 + 2^11 Z_2 and -2^6 + 2^11 Z_2\n";
+printf "  and Lemma 7.7 is proved in this case.\n\n";
+
+// 864a1
+printf "Exclude sets for E = 864a1\n";
+E := EllipticCurve("864a1");
+// points in the sets that can be excluded
+centers := [12^3-3*2^10, 12^3+2^10];
+
+j0 := jInvariant(E);
+pol0 := Evaluate(polxj, [x, j0]);
+// construct number field corresponding to fiber of j above j0
+L := NumberField(x^12 - 6*x^11 + 110*x^9 - 132*x^8 - 528*x^7 + 1100*x^6 + 330*x^5
+                  - 2508*x^4 + 2134*x^3 - 594*x^2 + 456*x - 371);
+OL := LLL(Integers(L));
+assert HasRoot(pol0, L);
+
+// compute the Selmer group or use precomputed generators
+if computeSelmer then
+  printf "Computing 2-Selmer group over L...\n";
+  time Sel, mSel := TwoSelmerGroup(BaseChange(X0_11, L));
+  SelEgens := [gen @@ mSel : gen in OrderedGenerators(Sel)];
+else
+  RR := PolynomialRing(L);
+  _<theta> := quo<RR | RR![-1264, -160, -4, 1]>;
+  SelEgens := [
+  1/1762760960400*(695446737*L.1^11 - 3368112859*L.1^10 - 3949549541*L.1^9 +
+      72295530811*L.1^8 - 7892898595*L.1^7 - 385414236641*L.1^6 +
+      332245394341*L.1^5 + 685810188169*L.1^4 - 1076975631565*L.1^3 +
+      64234377623*L.1^2 + 16525536399*L.1 + 344490503973)*theta^2
+  + 1/661035360150*(-4549783966*L.1^11 + 23185453912*L.1^10 + 20251162738*L.1^9
+      - 480244699298*L.1^8 + 177591735360*L.1^7 + 2500676981113*L.1^6 -
+      2902431020988*L.1^5 - 3734958421592*L.1^4 + 8693054426420*L.1^3 -
+      3164160531764*L.1^2 - 758680441982*L.1 - 564821633739)*theta
+  + 1/661035360150*(-29301450264*L.1^11 + 152545505173*L.1^10 +
+      122322503552*L.1^9 - 3138098073967*L.1^8 + 1381164097340*L.1^7 +
+      16818481071477*L.1^6 - 19504307519902*L.1^5 - 27166804928943*L.1^4 +
+      55473198524930*L.1^3 - 15101855346731*L.1^2 - 463980148378*L.1 -
+      9462847680781),
+  1/5288282881200*(-5043061704*L.1^11 + 23185088003*L.1^10 + 33707572672*L.1^9 -
+      512037196037*L.1^8 - 65540652260*L.1^7 + 2694914785047*L.1^6 -
+      1684502003522*L.1^5 - 4729009544223*L.1^4 + 6317540575030*L.1^3 -
+      575196397891*L.1^2 + 247622430142*L.1 - 1312190478941)*theta^2
+  + 1/1322070720300*(19996834554*L.1^11 - 94759961153*L.1^10 -
+      123903328522*L.1^9 + 2062771233287*L.1^8 - 3619410940*L.1^7 -
+      11011667497497*L.1^6 + 7979087922422*L.1^5 + 19120173222723*L.1^4 -
+      27317060695330*L.1^3 + 3814049531041*L.1^2 - 1142650058092*L.1 +
+      6117119661341)*theta
+  + 1/132207072030*(-3300920278*L.1^11 +
+      19051301071*L.1^10 + 6966904114*L.1^9 - 373282106609*L.1^8 +
+      337610323290*L.1^7 + 2043361419829*L.1^6 - 3057283066584*L.1^5 -
+      2669146149251*L.1^4 + 7340222304020*L.1^3 - 4143117048167*L.1^2 +
+      2131244475004*L.1 - 3004221251607),
+  1/5288282881200*(-9047277331*L.1^11 + 42301422892*L.1^10 + 56523593083*L.1^9 -
+      923203323518*L.1^8 - 28642515615*L.1^7 + 4788534218608*L.1^6 -
+      3650761489533*L.1^5 - 8038820764922*L.1^4 + 12266967910445*L.1^3 -
+      2785798456424*L.1^2 + 1410013614613*L.1 - 2495525377974)*theta^2
+  + 1/264414144060*(7867853773*L.1^11 - 37628956686*L.1^10 - 46023216269*L.1^9 +
+      811679244334*L.1^8 - 56561044075*L.1^7 - 4238648512624*L.1^6 +
+      3588388258949*L.1^5 + 6967465557596*L.1^4 - 11508636779985*L.1^3 +
+      2981328216192*L.1^2 - 1068637262069*L.1 + 2452765255022)*theta
+  + 1/661035360150*(237936843812*L.1^11 - 1139041044609*L.1^10 -
+      1395604771816*L.1^9 + 24567536374211*L.1^8 - 1659359969720*L.1^7 -
+      128930397916391*L.1^6 + 107009229774466*L.1^5 + 212546696821969*L.1^4 -
+      346133715908190*L.1^3 + 86665112278623*L.1^2 - 31501151306326*L.1 +
+      72971483735473),
+  1/211531315248*(14611185*L.1^11 - 60740678*L.1^10 - 117331849*L.1^9 +
+      1475009216*L.1^8 + 304604213*L.1^7 - 6451290108*L.1^6 + 8184375575*L.1^5 +
+      3954341544*L.1^4 - 27667936327*L.1^3 + 32278243126*L.1^2 - 20950925383*L.1 +
+      3765993422)*theta^2
+  + 1/440690240100*(-6309979707*L.1^11 +
+      31432083449*L.1^10 + 32078330351*L.1^9 - 663265317521*L.1^8 +
+      168075109745*L.1^7 + 3492261753501*L.1^6 - 3504631344701*L.1^5 -
+      5404281945209*L.1^4 + 10560750371465*L.1^3 - 3608309002453*L.1^2 +
+      840992139261*L.1 - 2223186932203)*theta
+  + 1/330517680075*(-5316431996*L.1^11
+      + 22912587747*L.1^10 + 41159992678*L.1^9 - 533297837663*L.1^8 -
+      148518140290*L.1^7 + 2609415178103*L.1^6 - 1808288908828*L.1^5 -
+      3386977498627*L.1^4 + 6800328842070*L.1^3 - 5083067449209*L.1^2 +
+      4535142574708*L.1 - 3084578818234),
+  1/5288282881200*(6926310338*L.1^11 - 33945785491*L.1^10 - 36479105034*L.1^9 +
+      717533932239*L.1^8 - 129040182430*L.1^7 - 3715180261709*L.1^6 +
+      3520361021384*L.1^5 + 5686493905831*L.1^4 - 10855155319760*L.1^3 +
+      3969910374977*L.1^2 - 637581761124*L.1 + 1508049820427)*theta^2
+  + 1/1322070720300*(-21857725684*L.1^11 + 107726335313*L.1^10 +
+      110964765612*L.1^9 - 2262246432027*L.1^8 + 478261376540*L.1^7 +
+      11592247894387*L.1^6 - 11456358819562*L.1^5 - 17059274169083*L.1^4 +
+      34300864788130*L.1^3 - 14338040460811*L.1^2 + 3969439001682*L.1 -
+      5476038272611)*theta
+  + 1/661035360150*(-103123546607*L.1^11 +
+      503119930174*L.1^10 + 578391277251*L.1^9 - 10762080761196*L.1^8 +
+      1440537555445*L.1^7 + 57673101893426*L.1^6 - 49197115634201*L.1^5 -
+      97335770222134*L.1^4 + 160126689275165*L.1^3 - 35525250025028*L.1^2 -
+      8015547975039*L.1 - 20146288834928)
+  ];
+end if;
+
+info864a1 := check_exclude(pol0, L, SelEgens, centers);
+printf "So we have reduced the sets for 864a1 to nothing\n";
+printf "  and Lemma 7.7 is proved in this case.\n\n";
+
+// 864b1
+printf "Exclude sets for E = 864b1\n";
+E := EllipticCurve("864b1");
+// points in the sets that can be excluded
+centers := [12^3-2^10, 12^3+3*2^10];
+
+j0 := jInvariant(E);
+pol0 := Evaluate(polxj, [x, j0]);
+// construct number field corresponding to fiber of j above j0
+L := NumberField(x^12 - 6*x^11 + 22*x^9 + 99*x^8 - 396*x^7 + 440*x^6 - 132*x^5
+                  - 6501*x^4 + 33506*x^3 - 23760*x^2 - 92418*x + 193081);
+OL := LLL(Integers(L));
+assert HasRoot(pol0, L);
+
+// compute the Selmer group or use precomputed generators
+if computeSelmer then
+  printf "Computing 2-Selmer group over L...\n";
+  time Sel, mSel := TwoSelmerGroup(BaseChange(X0_11, L));
+  SelEgens := [gen @@ mSel : gen in OrderedGenerators(Sel)];
+else
+  RR := PolynomialRing(L);
+  _<theta> := quo<RR | RR![-1264, -160, -4, 1]>;
+  SelEgens := [
+  1/45252086593274757304064*(73318884446186392*L.1^11 - 339130542835829079*L.1^10
+    - 550693732400369876*L.1^9 + 489826272385957079*L.1^8 + 11551882324132978952*L.1^7
+    - 7250164101176538740*L.1^6 + 6097082063153950916*L.1^5 - 57662136661229231532*L.1^4
+    - 572560529872956754808*L.1^3 + 1733620994459179453215*L.1^2 + 1114089539904632791424*L.1
+    - 5165468770998344243543)*theta^2
+    + 1/11313021648318689326016*(127775487489555661*L.1^11 - 524954964072120657*L.1^10
+      - 1196355560114679037*L.1^9 + 2318271132563747321*L.1^8 + 15201383364026986292*L.1^7
+      - 36684061877916014584*L.1^6 + 6035511837618999968*L.1^5 + 71423466367332598620*L.1^4
+      - 1041282902898144218421*L.1^3 + 2543447136830914852965*L.1^2 + 5626345969942402606961*L.1
+      - 8528455810694058520273)*theta
+    + 1/5656510824159344663008*(-33548932103342231*L.1^11 + 377150012806660015*L.1^10
+      - 1502588524324837765*L.1^9 + 4804794870166784117*L.1^8 - 9910094349118217964*L.1^7
+      - 17473090972155534936*L.1^6 - 211057340965190451760*L.1^5 + 625582826524424342716*L.1^4
+      + 1626524262211938195023*L.1^3 - 2341427624089821733355*L.1^2 + 10289388358995214502713*L.1
+      + 23371924785237020458451),
+  1/45252086593274757304064*(-37493250367144804*L.1^11 + 93243067311075707*L.1^10
+    + 186509660140544208*L.1^9 + 1509046401894140533*L.1^8 - 3117095238783725688*L.1^7
+    + 5688397865237611636*L.1^6 - 32047817740566159812*L.1^5 + 46239499729288670972*L.1^4
+    + 96753061902644654628*L.1^3 + 106878064135859902925*L.1^2 + 730895627622397031700*L.1
+    - 2780293515881002351573)*theta^2
+    + 1/22626043296637378652032*(63818958945516921*L.1^11 - 188605109260626331*L.1^10
+      + 2118797080323338155*L.1^9 - 10410796013288971769*L.1^8 - 7718427280811053308*L.1^7
+      - 46303072226745757792*L.1^6 + 288021113192187056840*L.1^5 - 467191657646616706172*L.1^4
+      + 505935672458839547551*L.1^3 - 1644125085540283638145*L.1^2 - 11897677394319708381391*L.1
+      + 32407644528355739722481)*theta
+    + 1/11313021648318689326016*(1805273987564754667*L.1^11 - 6875368289212500397*L.1^10
+      - 3936323454683999359*L.1^9 - 41476848967348492623*L.1^8 + 160260112569247506220*L.1^7
+      - 414789416426294899184*L.1^6 + 1748740152465619516520*L.1^5 - 2720804818333754418340*L.1^4
+      - 6655702275059225605283*L.1^3 + 19785835533874328889529*L.1^2 - 35539207074900113854461*L.1
+      + 57784574733469398965367),
+  1/45252086593274757304064*(-17881509442219253*L.1^11 + 373146876187298640*L.1^10
+    - 1544104776339381203*L.1^9 + 279682329016024892*L.1^8 - 3454681872125361804*L.1^7
+    + 44780471667819875132*L.1^6 - 101638133971472990180*L.1^5 + 258271291558134902352*L.1^4
+    - 448908713716992656515*L.1^3 - 1144722407650006903980*L.1^2 + 5999644734626468014259*L.1
+    - 4449774162161392264612)*theta^2
+    + 1/5656510824159344663008*(-139770975153940307*L.1^11 + 953258665126141557*L.1^10
+      - 1108439832534618731*L.1^9 + 1222845076939595529*L.1^8 - 20501491759318778588*L.1^7
+      + 64069178357357395776*L.1^6 - 185120096360726426224*L.1^5 + 417669830641406705708*L.1^4
+      + 36724101085460004243*L.1^3 - 3380499881697656575513*L.1^2 + 5408219072078925610287*L.1
+      - 7191451832331008767865)*theta
+    + 1/5656510824159344663008*(-1670753442828615694*L.1^11 + 8838190174905771409*L.1^10
+      - 5950200316269920982*L.1^9 + 34344815598706305823*L.1^8 - 194756479126688403776*L.1^7
+      + 541426149547561408852*L.1^6 - 1977290160699502520052*L.1^5 + 3912387343558059258580*L.1^4
+      + 2780666328971171537694*L.1^3 - 24743471103672037596785*L.1^2 + 54218224265398362379266*L.1
+      - 85944758665943111003631)
+  ];
+end if;
+
+info864b1 := check_exclude(pol0, L, SelEgens, centers);
+L864b1 := L;
+printf "So we have reduced the sets for 864b1 to 2^9 + 2^11 Z_2\n";
+printf "  and Lemma 7.7 is proved in this case.\n\n";
+
+// 864c1
+printf "Exclude sets for E = 864c1\n";
+E := EllipticCurve("864c1");
+// points in the sets that can be excluded
+centers := [15*2^6, -2^6];
+
+j0 := jInvariant(E);
+pol0 := Evaluate(polxj, [x, j0]);
+// construct number field corresponding to fiber of j above j0
+L := NumberField(x^12 - 44*x^9 - 264*x^8 - 264*x^7 - 2266*x^6 - 4488*x^5
+                  - 264*x^4 - 17644*x^3 - 7128*x^2 + 144*x - 15191);
+OL := LLL(Integers(L));
+assert HasRoot(pol0, L);
+
+// compute the Selmer group or use precomputed generators
+if computeSelmer then
+  printf "Computing 2-Selmer group over L...\n";
+  time Sel, mSel := TwoSelmerGroup(BaseChange(X0_11, L));
+  SelEgens := [gen @@ mSel : gen in OrderedGenerators(Sel)];
+else
+  RR := PolynomialRing(L);
+  _<theta> := quo<RR | RR![-1264, -160, -4, 1]>;
+  SelEgens := [
+  1/60506398493926908692224*(-406665936964307267*L.1^11 +
+      181545946829327847*L.1^10 + 340817954761806869*L.1^9 +
+      18706086732461387987*L.1^8 + 97655486846970099201*L.1^7 +
+      46069103608171991595*L.1^6 + 741920286995932476223*L.1^5 +
+      1202953456739356403621*L.1^4 - 1407302423852521486841*L.1^3 +
+      4396252720420487993801*L.1^2 - 337221237661919196109*L.1 -
+      4436330150284297395911)*theta^2
+  + 1/15126599623481727173056*(815174304715795741*L.1^11
+      - 417308807313513963*L.1^10 - 871092600225618967*L.1^9 -
+      36713856992568002019*L.1^8 - 190164137812760414479*L.1^7 -
+      72982032984909007375*L.1^6 - 1462777789482937366637*L.1^5 -
+      2654294186579705854565*L.1^4 + 2792959000191008150311*L.1^3 -
+      9569268457267870884541*L.1^2 - 5201285130780050078377*L.1 +
+      9363274443100424830247)*theta
+  + 1/1890824952935215896632*(1252507143254847400*L.1^11
+      - 2016648173244189577*L.1^10 - 1368132862329281854*L.1^9 -
+      58101365555155971467*L.1^8 - 234119523153713023816*L.1^7 +
+      261895918004680993371*L.1^6 - 1795662116819001174590*L.1^5 -
+      318541715003034936837*L.1^4 + 10851278693415189414072*L.1^3 -
+      12412462633821292602251*L.1^2 + 20661270491813668692402*L.1 +
+      19925307612388929111647),
+  1/30253199246963454346112*(-130913727839391460*L.1^11 -
+      162069145892746825*L.1^10 - 235282059941017826*L.1^9 +
+      6523278372518649109*L.1^8 + 40015432259359251204*L.1^7 +
+      93610171438939638235*L.1^6 + 352130812677438367278*L.1^5 +
+      927295351359158890379*L.1^4 + 1146869030351883013804*L.1^3 +
+      1695696626431685786813*L.1^2 + 3895723198987421305142*L.1 +
+      997401802332834157743)*theta^2
+  + 1/30253199246963454346112*(665555236957764965*L.1^11
+      + 1340125405896715843*L.1^10 + 1316967450027536901*L.1^9 -
+      37033815215336289017*L.1^8 - 211827613773074682407*L.1^7 -
+      660609615674910241337*L.1^6 - 1670583718303879864673*L.1^5 -
+      5869997938391256600687*L.1^4 - 8021540964985466828801*L.1^3 -
+      1208003711703923438531*L.1^2 - 37459161296724469915773*L.1 +
+      7712705683951034371781)*theta
+  + 1/3781649905870431793264*(883391552548094769*L.1^11
+      + 5940286843655825169*L.1^10 + 781167385377188469*L.1^9 -
+      48660181268385163663*L.1^8 - 475089667475871272459*L.1^7 -
+      1892380071598167532875*L.1^6 - 3186335201556807207153*L.1^5 -
+      16356081398838756768097*L.1^4 - 27392686239352820498853*L.1^3 -
+      781576310319993729921*L.1^2 - 111954445291079368876813*L.1 -
+      1475099625526040857101),
+  1/30253199246963454346112*(268264707274594531*L.1^11 + 145073115165207761*L.1^10
+      - 52802348156078813*L.1^9 - 12232473891635153587*L.1^8 -
+      77998286798622379225*L.1^7 - 106388989049832145115*L.1^6 -
+      615399842667301818175*L.1^5 - 1354137875575104651485*L.1^4 -
+      327432169537126533839*L.1^3 - 3406448929314259479689*L.1^2 -
+      1582202407629060403035*L.1 + 563715501440132860775)*theta^2
+  + 1/7563299811740863586528*(-806200100190339688*L.1^11 +
+      437256443838581251*L.1^10 - 478970905355447694*L.1^9 +
+      38472672435739330033*L.1^8 + 186402741708514179672*L.1^7 +
+      141618296896210117655*L.1^6 + 1652582474361665450298*L.1^5 +
+      2420566829681016639655*L.1^4 - 1037306899952841865040*L.1^3 +
+      9205521348656198523465*L.1^2 + 244516775102241311482*L.1 -
+      7243452261780625780549)*theta
+  + 1/7563299811740863586528*(-7623886788909683261*L.1^11
+      - 3600667136686189091*L.1^10 - 20533904564765469*L.1^9 +
+      353747142745837132201*L.1^8 + 2161025254741005018367*L.1^7 +
+      2967977201497966062041*L.1^6 + 17340805216210481326825*L.1^5 +
+      38080660124056042349055*L.1^4 + 15449022353993040474729*L.1^3 +
+      103196923002328242304963*L.1^2 + 87760230490167067572917*L.1 +
+      50897808995091292169419)
+  ];
+end if;
+
+info864c1 := check_exclude(pol0, L, SelEgens, centers);
+L864c1 := L;
+printf "So we have reduced the sets for 864c1 to -2^9 + 2^11 Z_2\n";
+printf "  and Lemma 7.7 is proved in this case.\n\n";
+
+// Lemma 7.12
+printf "\n\n";
+printf "=======================================================\n";
+printf "PROOF OF LEMMA 7.12\n";
+printf "=======================================================\n";
+
+// Get the Mordell-Weil group of X_0(11) over Q (cyclic of order 5).
+MW, mMW := MordellWeilGroup(X0_11);
+
+// 864c1
+printf "\nDoing check for 864c1...\n\n";
+E := EllipticCurve("864c1");
+jE := jInvariant(E);
+
+// Check that the disk containing canpt is the only relevant one.
+imSelset, pr2seq, Kseq, mseq, th := Explode(info864c1);
+// First eliminate all disk combinations except one,
+//  which must then be the one coming from the canonical point.
+pol0 := Evaluate(polxj, [x, jE]);
+rtseq := [* [r[1] : r in Roots(pol0, Kseq[i,1])
+                  | Degree(AbsoluteMinimalPolynomial(r[1]))
+                      eq Degree(pr2seq[i])*RamificationIndex(pr2seq[i])]
+            : i in [1..#pr2seq] *];
+// find the square classes
+imseq := [* [mseq[i]((r @@ Kseq[i,2]) - th) : r in rtseq[i]] : i in [1..#pr2seq] *];
+allims := product_of_seqs(imseq);
+// and check all possible combinations if they map into the image of the Selmer group
+compatible := [im : im in allims | im in imSelset];
+assert #compatible eq 1;
+printf "Verified that there is only one compatible combination of 2-adic disks,\n";
+printf "  which must be the disk containing the canonical point.\n\n";
+
+// find canonical point
+K := L864c1;
+xcan := Roots(Evaluate(polxj, [x,jE]), K)[1,1];
+canpt := X0_11(K)![xcan, yfunc(xcan, jE)];
+// Find relation between j(P) and t(P-canpt), where t = -x/y
+// Since j : X_0(11) --> P^1 has degree 12 and t has degree 3,
+// the polynomial relating the two will have degree 3 in j and 12 in t.
+// We find it by interpolation.
+printf "Listing points and evaluating the two functions...\n";
+points := [n*canpt + mMW(g) : n in [-5..5], g in MW];
+pairs := [];
+for pt in points do
+  // remove "bad" points, where one of the values is infinite
+  jpt := Evaluate(j11, pt);
+  d := pt - canpt;
+  if Type(jpt) ne Infty and d[2] ne 0 then
+    Append(~pairs, [jpt, -d[1]/d[2]]);
+  end if;
+end for;
+assert #points gt 52; // check that we have more than (12+1)*(3+1) = 52 points
+// set up matrix
+P2K<jj,tt> := PolynomialRing(K, 2);
+mons := [jj^m*tt^n : n in [0..12], m in [0..3]];
+printf "Setting up matrix...\n";
+mat := Matrix(K, [[Evaluate(m, pair) : pair in pairs] : m in mons]);
+printf "Solving linear system...\n";
+kermat := KernelMatrix(mat);
+assert Nrows(kermat) eq 1; // solution unique up to scaling
+rel := &+[kermat[1,i]*mons[i] : i in [1..#mons]];
+printf "Sanity check...\n";
+assert forall{pt : pt in [n*canpt + mMW(g) : n in [-6,6], g in MW]
+                 | Evaluate(rel, [Evaluate(j11, pt), -d[1]/d[2] where d := pt-canpt]) eq 0};
+// shift
+printf "Shifting relation...\n";
+rel1 := Evaluate(rel, [jE + disks0[3,2]*jj, tt]);
+// determine radius of convergence
+OK := Integers(K);
+pr2seq := Decomposition(OK, 2);
+rad, rad1, val := radius_of_convergence(rel1, pr2seq, 1);
+assert rad lt -1/3;
+printf "Series converges on the relevant disk: rad = %o < -1/3\n", rad;
+// and valuation of the image on units
+assert val eq 2 and rad1 eq rad;
+printf "Suffices to check that Q does not map into image of Selmer group,\n";
+printf "  where Q in X_0(11)(K_2) satisfies 2*Q = phi(1) - can.\n\n";
+
+// Now parameterize disk around canonical point formally over L.
+L := L864c1;
+PwsL<T> := LaurentSeriesAlgebra(L);
+PPwsL := PolynomialRing(PwsL);
+xser := Roots(Evaluate(polxj, [PPwsL.1, jE + 2^11*T]))[1,1];
+yser := yfunc(xser, jE + 2^11*T);
+// Take difference with canonical point.
+diffpt := X0_11(PwsL)![xser, yser] - X0_11(PwsL)!canpt;
+// check that half this point at T = 1 does not map into image of Selmer group
+xval := Evaluate(diffpt[1], 1);
+assert <m(xval - th) : m in mseq> eq <Codomain(m)!0 : m in mseq>;
+xval1 := <halve(Kseq[i,2](xval)) : i in [1..#Kseq]>;
+assert <mseq[i]((xval1[i] @@ Kseq[i,2]) - th) : i in [1..#mseq]> notin imSelset;
+printf "Verified that Q as above does not map into image of Selmer group\n";
+
+// 864b1
+printf "\nDoing check for 864b1...\n\n";
+
+// find canonical point
+E := EllipticCurve("864b1");
+jE := jInvariant(E);
+
+// Check that the disk containing canpt is the only relevant one.
+imSelset, pr2seq, Kseq, mseq, th := Explode(info864b1);
+// First eliminate all disk combinations except one,
+//  which must then be the one coming from the canonical point.
+pol0 := Evaluate(polxj, [x, jE]);
+rtseq := [* [r[1] : r in Roots(pol0, Kseq[i,1])
+                  | Degree(AbsoluteMinimalPolynomial(r[1]))
+                      eq Degree(pr2seq[i])*RamificationIndex(pr2seq[i])]
+            : i in [1..#pr2seq] *];
+// find the square classes
+imseq := [* [mseq[i]((r @@ Kseq[i,2]) - th) : r in rtseq[i]] : i in [1..#pr2seq] *];
+allims := product_of_seqs(imseq);
+// and check all possible combinations if they map into the image of the Selmer group
+compatible := [im : im in allims | im in imSelset];
+assert #compatible eq 1;
+printf "Verified that there is only one compatible combination of 2-adic disks,\n";
+printf "  which must be the disk containing the canonical point.\n\n";
+
+K := L864b1;
+xcan := Roots(Evaluate(polxj, [x,jE]), K)[1,1];
+canpt := X0_11(K)![xcan, yfunc(xcan, jE)];
+// Find relation between j(P) and t(P-canpt), where t = -x/y
+// Since j : X_0(11) --> P^1 has degree 12 and t has degree 3,
+// the polynomial relating the two will have degree 3 in j and 12 in t.
+// We find it by interpolation.
+printf "Listing points and evaluating the two functions...\n";
+points := [n*canpt + mMW(g) : n in [-5..5], g in MW];
+pairs := [];
+for pt in points do
+  // remove "bad" points, where one of the values is infinite
+  jpt := Evaluate(j11, pt);
+  d := pt - canpt;
+  if Type(jpt) ne Infty and d[2] ne 0 then
+    Append(~pairs, [jpt, -d[1]/d[2]]);
+  end if;
+end for;
+assert #points gt 52; // check that we have more than (12+1)*(3+1) = 52 points
+// set up matrix
+P2K<jj,tt> := PolynomialRing(K, 2);
+mons := [jj^m*tt^n : n in [0..12], m in [0..3]];
+printf "Setting up matrix...\n";
+mat := Matrix(K, [[Evaluate(m, pair) : pair in pairs] : m in mons]);
+printf "Solving linear system...\n";
+kermat := KernelMatrix(mat);
+assert Nrows(kermat) eq 1; // solution unique up to scaling
+rel := &+[kermat[1,i]*mons[i] : i in [1..#mons]];
+printf "Sanity check...\n";
+assert forall{pt : pt in [n*canpt + mMW(g) : n in [-6,6], g in MW]
+                 | Evaluate(rel, [Evaluate(j11, pt), -d[1]/d[2] where d := pt-canpt]) eq 0};
+// shift
+printf "Shifting relation...\n";
+rel1 := Evaluate(rel, [jE + disks0[1,2]*jj, tt]);
+OK := Integers(K);
+pr2seq := Decomposition(OK, 2);
+// determine radius of convergence
+rad, rad1, val := radius_of_convergence(rel1, pr2seq, 1);
+assert rad lt -1/3;
+printf "Series converges on the relevant disk: rad = %o < -1/3\n", rad;
+assert val eq 2 and rad1 eq rad;
+printf "Suffices to check that Q does not map into image of Selmer group,\n";
+printf "  where Q in X_0(11)(K_2) satisfies 2*Q = phi(1) - can.\n\n";
+
+// Now parameterize disk around canonical point formally over L.
+L := L864b1;
+PwsL<T> := LaurentSeriesAlgebra(L);
+PPwsL := PolynomialRing(PwsL);
+xser := Roots(Evaluate(polxj, [PPwsL.1, jE + 2^11*T]))[1,1];
+yser := yfunc(xser, jE + 2^11*T);
+// Take difference with canonical point.
+diffpt := X0_11(PwsL)![xser, yser] - X0_11(PwsL)!canpt;
+// check that half this point at T = 1 does not map into image of Selmer group
+xval := Evaluate(diffpt[1], 1);
+assert <m(xval - th) : m in mseq> eq <Codomain(m)!0 : m in mseq>;
+xval1 := <halve(Kseq[i,2](xval)) : i in [1..#Kseq]>;
+assert <mseq[i]((xval1[i] @@ Kseq[i,2]) - th) : i in [1..#mseq]> notin imSelset;
+printf "Verified that Q as above does not map into image of Selmer group\n";
+
+// 96a1
+printf "\nDoing check for 96a1...\n\n";
+
+// First check that there is only one relevant disk above each of the two sets.
+load "localtest.magma";
+// get data for X_96a1(11)
+label := "96a1"; sign := 1;
+C, minors, cc4, inv, equation := XE11twist(label, sign, R);
+// minimize it (at least to some extent)
+equation1 := Evaluate(equation, [12^2*R.1, 12^2*R.2, 12*R.3, 12*R.4, R.5])/12^6;
+H := Matrix(5, 5, [Deriv(Deriv(equation1, i), j) : i, j in [1..5]]);
+minors1 := purify(Setseq(Set(Minors(H, 4))));
+cc41 := c4Invariant(equation1);
+inv1 := inv/12^12;
+// sanity check: canonical point on the new model has correct j-invariant
+assert jP(cc41, inv1, equation1, [0,1,0,0,0]) eq jInvariant(EllipticCurve(label));
+// This is our model of X_96a1(11):
+C1 := Curve(Proj(R), minors1);
+// split C1(Q_2) into residue disks
+params := twoadicdiscs(C1); // gives four disks, the last two of which are relevant
+for i := 1 to 2 do
+  _, _, _, valj := test_disk(params[i], cc41, equation1, inv1);
+  assert valj eq 9; // maps to disk around -2^9, which we have excluded in Lemma 7.7
+end for;
+c4ser3, Fser3, i03, val3 := test_disk(params[3], cc41, equation1, inv1);
+// valc4 = 13, valF = 0, vinv8 = 48
+// OK, v(j) = 6; j in -64 + O(2^9)
+c4ser4, Fser4, i04, val4 := test_disk(params[4], cc41, equation1, inv1);
+// valc4 = 13, valF = 0, vinv8 = 48
+// OK, v(j) = 6; j in -64 + O(2^9)
+// normalize
+assert Min([Valuation(c) : c in Coefficients(c4ser3)]) eq 5;
+assert Min([Valuation(c) : c in Coefficients(c4ser4)]) eq 5;
+c4ser3 := c4ser3/2^5;
+c4ser4 := c4ser4/2^5;
+// extract series for j invariant
+jser3 := 2^val3*c4ser3^3/i03^8/Fser3^11;
+jser4 := 2^val4*c4ser4^3/i04^8/Fser4^11;
+assert Valuation(Coefficient(jser3, 0) + 2^6) ge 11
+        and Valuation(Coefficient(jser3, 1)) eq val3 + 3
+        and Valuation(Coefficient(jser3, 2)) eq val3 + 2
+        and forall{j : j in [3..4] | Valuation(Coefficient(jser3, j)) + j gt val3 + 4};
+assert Valuation(Coefficient(jser4, 0) - 15*2^6) ge 11
+        and Valuation(Coefficient(jser4, 1)) eq val4 + 3
+        and Valuation(Coefficient(jser4, 2)) eq val4 + 2
+        and forall{j : j in [3..4] | Valuation(Coefficient(jser4, j)) + j gt val4 + 4};
+// this shows that jser3(t) = -64 + O(2^11) for all t in 2Z_2 and
+// jser4(t) = 960 + O(2^11) for all t in 2Z_2
+printf "Verified that there is only one relevant disk above each set\n\n";
+
+// find canonical point
+E := EllipticCurve("96a1");
+jE := jInvariant(E);
+K := L96a1;
+xcan := Roots(Evaluate(polxj, [x,jE]), K)[1,1];
+canpt := X0_11(K)![xcan, yfunc(xcan, jE)];
+// Find relation between j(P) and t(P-canpt), where t = -x/y
+// Since j : X_0(11) --> P^1 has degree 12 and t has degree 3,
+// the polynomial relating the two will have degree 3 in j and 12 in t.
+// We find it by interpolation.
+printf "Listing points and evaluating the two functions...\n";
+points := [n*canpt + mMW(g) : n in [-5..5], g in MW];
+pairs := [];
+for pt in points do
+  // remove "bad" points, where one of the values is infinite
+  jpt := Evaluate(j11, pt);
+  d := pt - canpt;
+  if Type(jpt) ne Infty and d[2] ne 0 then
+    Append(~pairs, [jpt, -d[1]/d[2]]);
+  end if;
+end for;
+assert #points gt 52; // check that we have more than (12+1)*(3+1) = 52 points
+// set up matrix
+P2K<jj,tt> := PolynomialRing(K, 2);
+mons := [jj^m*tt^n : n in [0..12], m in [0..3]];
+printf "Setting up matrix...\n";
+mat := Matrix(K, [[Evaluate(m, pair) : pair in pairs] : m in mons]);
+printf "Solving linear system...\n";
+kermat := KernelMatrix(mat);
+assert Nrows(kermat) eq 1; // solution unique up to scaling
+rel := &+[kermat[1,i]*mons[i] : i in [1..#mons]];
+printf "Sanity check...\n";
+assert forall{pt : pt in [n*canpt + mMW(g) : n in [-6,6], g in MW]
+                 | Evaluate(rel, [Evaluate(j11, pt), -d[1]/d[2] where d := pt-canpt]) eq 0};
+// shift
+printf "Shifting relation...\n";
+rel1 := Evaluate(rel, [jE + disks0[4,2]*jj, tt]);
+OK := Integers(K);
+pr2seq := Decomposition(OK, 2);
+// determine radius of convergence
+rad, rad1, val := radius_of_convergence(rel1, pr2seq, 1);
+assert rad lt -1/3;
+printf "Series converges on the relevant disk: rad = %o < -1/3\n", rad;
+assert val eq 3 and rad1 eq rad;
+printf "Suffices to check that Q does not map into image of Selmer group,\n";
+printf "  where Q in X_0(11)(K_2) satisfies 4*Q = phi(1) - can.\n\n";
+
+// Now parameterize disk around canonical point formally over L.
+imSelset, pr2seq, Kseq, mseq, th := Explode(info96a1);
+L := L96a1;
+PwsL<T> := LaurentSeriesAlgebra(L);
+PPwsL := PolynomialRing(PwsL);
+xser := Roots(Evaluate(polxj, [PPwsL.1, jE + 2^11*T]))[1,1];
+yser := yfunc(xser, jE + 2^11*T);
+// Take difference with canonical point.
+diffpt := X0_11(PwsL)![xser, yser] - X0_11(PwsL)!canpt;
+// check that a quarter of this point at T = 1 does not map into image of Selmer group
+xval := Evaluate(diffpt[1], 1);
+assert <m(xval - th) : m in mseq> eq <Codomain(m)!0 : m in mseq>;
+xval1 := <halve(Kseq[i,2](xval)) : i in [1..#Kseq]>;
+assert <mseq[i]((xval1[i] @@ Kseq[i,2]) - th) : i in [1..#mseq]> eq <Codomain(m)!0 : m in mseq>;
+xval2 := <halve(xc) : xc in xval1>;
+assert <mseq[i]((xval2[i] @@ Kseq[i,2]) - th) : i in [1..#mseq]> notin imSelset;
+printf "Verified that Q as above does not map into image of Selmer group\n";
+
+// Check that disk 15*2^6 + 2^{11} \Z_2 can be eliminated
+printf "\nEliminating disk 15*2^6 + 2^11 Z_2 for 96a1 ...\n";
+
+// It is true also in this case that there is only one 2-adic disk
+//  in X_96a1(11) whose image under j is contained in the disk in question (see above),
+//  but we do not have an explicit description of the map to X_0(11),
+//  so we cannot use that to restrict to just one preimage disk.
+//  (Note also that our disk in the j-line does _not_ contain the
+//  j-invariant of 96a2.)
+// So we first filter out the combinations of disks that are incompatible
+//  with the Selmer group information.
+j2 := 15*2^6;
+pol2 := Evaluate(polxj, [x, j2]);
+rtseq := [* [r[1] : r in Roots(pol2, Kseq[i,1])
+                  | Degree(AbsoluteMinimalPolynomial(r[1]))
+                      eq Degree(pr2seq[i])*RamificationIndex(pr2seq[i])]
+            : i in [1..#pr2seq] *];
+// find the square classes
+imseq := [* [mseq[i]((r @@ Kseq[i,2]) - th) : r in rtseq[i]] : i in [1..#pr2seq] *];
+allims := product_of_seqs(imseq);
+// and check all possible combinations if they map into the image of the Selmer group
+compatible := [i : i in [1..#allims] | allims[i] in imSelset];
+assert #compatible eq 4;
+printf "  four combinations of preimage disks are compatible with Selmer group\n";
+rtcombs := product_of_seqs(rtseq)[compatible];
+
+// number field giving fiber above j2
+defpolL2 := x^12 - 66*x^10 + 1419*x^8 - 1320*x^7 - 10186*x^6 + 43560*x^5
+              + 41481*x^4 - 312840*x^3 + 289344*x^2 + 649920*x - 1882496;
+L2 := NumberField(defpolL2);
+flag, x2 := HasRoot(pol2, L2);
+assert flag;
+y2 := yfunc(x2, j2);
+pt2 := X0_11(L2)![x2,y2];
+
+LL := NumberField(MinimalPolynomial(x2));
+evpol := P!Eltseq(Roots(defpolL2, LL)[1,1]);
+tocompletions := [* [hom<L2 -> Kseq[i,1] | Evaluate(evpol, rt)> : rt in rtseq[i]] : i in [1..#Kseq] *];
+tocomp := product_of_seqs(tocompletions)[compatible];
+
+// local images of point above j2
+locpt2 := [<X0_11(Kseq[i,1])![c[i](pt2[1]), c[i](pt2[2])] : i in [1..#Kseq]>
+            : c in tocomp];
+// local images of canpt2
+j1 := jInvariant(EllipticCurve("96a2"));
+pol1 := Evaluate(polxj, [x, j1]);
+flag, x1 := HasRoot(pol1, L);
+assert flag;
+y1 := yfunc(x1, j1);
+canpt2 := X0_11(L)![x1, y1];
+locpt1 := <X0_11(Kseq[i,1])![Kseq[i,2](canpt2[1]), Kseq[i,2](canpt2[2])]
+            : i in [1..#Kseq]>;
+// Look at the 2-divisibility and compatibility with Selmer group
+//  of pt2 + canpt2 in the various embeddings.
+locdiffpts := [<pt[i] + locpt1[i] : i in [1..2]> : pt in locpt2];
+assert forall{pt : pt in locdiffpts
+                 | forall{i : i in [1..#Kseq]
+                            | mseq[i]((pt[i][1] @@ Kseq[i,2]) - th) eq Codomain(mseq[i])!0}};
+// divisible by 2 (must be so, since we only look at compatible disks)
+// now divide by 2
+halves := [<halve(pt[1]) : pt in e> : e in locdiffpts];
+// and check again
+indices := [i : i in [1..#halves]
+              | <mseq[m]((halves[i][m] @@ Kseq[m,2]) - th) : m in [1..#Kseq]> in imSelset];
+assert #indices eq 1;
+assert forall{i : i in [1..#Kseq]
+                | mseq[i]((halves[indices[1]][i] @@ Kseq[i,2]) - th) eq Codomain(mseq[i])!0};
+// divisible again
+quarter := <halve(h) : h in halves[indices[1]]>;
+assert <mseq[m]((quarter[m] @@ Kseq[m,2]) - th) : m in [1..#Kseq]> notin imSelset;
+printf "Verified that center of disk + can(96a2) is 4*Q\n";
+printf "  with Q incpomatible with Selmer group for disk combination no. %o,\n", indices[1];
+printf "  and that it is 2*Q with incompatible Q otherwise.\n";
+
+// 54a1
+printf "\nDoing check for 54a1...\n\n";
+// find canonical point
+// E := EllipticCurve("54a1");
+// jE := jInvariant(E);
+K<w> := NumberField(x^11 - 2);
+canpt := X0_11![16,60];
+// Find relation between j(P) and t'(P-canpt), where t' = -(x-5)/(y-5)
+// Since j : X_0(11) --> P^1 has degree 12 and t' has degree 2,
+// the polynomial relating the two will have degree 2 in j and 12 in t.
+// We find it by interpolation.
+// NOTE: Here the canonical point has finite order, so we use another point
+//       of infinite order defined over some extension field.
+L := NumberField(x^2+x+12);
+pt0 := Points(X0_11(L), -1)[1];
+assert Order(pt0) eq 0;
+printf "Listing points and evaluating the two functions...\n";
+points := [n*pt0 + mMW(g) : n in [-5..5], g in MW];
+pairs := [];
+for pt in points do
+  // remove "bad" points, where one of the values is infinite
+  jpt := Evaluate(j11, pt);
+  d := pt - canpt;
+  if Type(jpt) ne Infty and d[2] ne 5 then
+    assert d[3] eq 1;
+    Append(~pairs, [jpt, -(d[1]-5)/(d[2]-5)]);
+  end if;
+end for;
+assert #points gt 39; // check that we have more than (12+1)*(2+1) = 39 points
+// set up matrix
+P2Q<jj,tt> := PolynomialRing(Rationals(), 2);
+P2L<jL,tL> := PolynomialRing(L, 2);
+mons := [jL^m*tL^n : n in [0..12], m in [0..2]];
+printf "Setting up matrix...\n";
+mat := Matrix(L, [[Evaluate(m, pair) : pair in pairs] : m in mons]);
+printf "Solving linear system...\n";
+kermat := KernelMatrix(mat);
+assert Nrows(kermat) eq 1; // solution unique up to scaling
+relL := &+[kermat[1,i]*mons[i] : i in [1..#mons]];
+rel := P2Q!relL;
+// shift
+printf "Shifting relation...\n";
+rel1 := Numerator(Evaluate(rel, [2^-5*(1/jj)^11, tt]));
+rel1 *:= LCM([Denominator(c) : c in Coefficients(rel1)]);
+P2K<z,u> := PolynomialRing(K, 2);
+relK := ExactQuotient(Evaluate(rel1, [z,w^5*z*(1+u)]), z^11);
+OK := Integers(K);
+pr2seq := Decomposition(OK, 2);
+// determine radius of convergence
+rad, rad1, val := radius_of_convergence(relK, pr2seq, 1);
+assert rad lt -1/3;
+printf "Series converges on the relevant disk: rad = %o\n", rad;
+// and valuation of the image on units
+assert val eq 5/11;
+printf "Suffices to check that Q does not map into image of Selmer group,\n";
+printf "  where Q in X_0(11)(K_2) satisfies Q = phi(1) - can or 2*Q = phi(2) - can.\n\n";
+
+E := EllipticCurve("54a1");
+j0 := jInvariant(E);
+pol0 := Evaluate(polxj, [x, j0]);
+// construct number field corresponding to fiber of j above j0
+L := NumberField(x^12 - 6*x^10 + 6*x^9 - 6*x^8 - 126*x^7 + 104*x^6 + 468*x^5
+                  + 258*x^4 - 456*x^3 - 1062*x^2 - 774*x - 380);
+OL := LLL(Integers(L));
+flag, x0 := HasRoot(pol0, L);
+assert flag;
+y0 := yfunc(x0, j0);
+canpt := X0_11(L)![x0, y0];
+
+// compute the Selmer group or use precomputed generators
+if computeSelmer then
+  printf "Computing 2-Selmer group over L...\n";
+  time Sel, mSel := TwoSelmerGroup(BaseChange(X0_11, L));
+  SelEgens := [gen @@ mSel : gen in OrderedGenerators(Sel)];
+else
+  RR := PolynomialRing(L);
+  _<theta> := quo<RR | RR![-1264, -160, -4, 1]>;
+  SelEgens := [
+    1/902980650177375352*(9243801989913*L.1^11 - 105127382581055*L.1^10 -
+        33066566707258*L.1^9 + 592045297780555*L.1^8 - 1051034225627923*L.1^7 -
+        166417641084742*L.1^6 + 14226703071657748*L.1^5 - 9293465503130572*L.1^4 -
+        31116884339839286*L.1^3 - 2332433790848456*L.1^2 + 22779838617697708*L.1 +
+        21059948582315184)*theta^2
+    + 1/225745162544343838*(-303162405001120*L.1^11 +
+        57285697043931*L.1^10 + 2059136932285548*L.1^9 - 1967669070375788*L.1^8 +
+        1216333201847475*L.1^7 + 39066042627516189*L.1^6 - 40003781135226520*L.1^5 -
+        167423518635990703*L.1^4 - 55400804275745133*L.1^3 +
+        223808439558885046*L.1^2 + 356245157437719780*L.1 +
+        180909858941520094)*theta
+    + 1/112872581272171919*(-322978319789150*L.1^11 +
+        832322296026736*L.1^10 + 2833717463771494*L.1^9 - 4204667258113504*L.1^8 +
+        5799384925102160*L.1^7 + 34223417720441527*L.1^6 - 136167327310415788*L.1^5
+        - 193942625617454671*L.1^4 + 50728890605550848*L.1^3 +
+        555306041972947899*L.1^2 + 710622540956122944*L.1 + 301649747604290695),
+    1/451490325088687676*(36979318405690*L.1^11 - 55216092756715*L.1^10 -
+        152194269218095*L.1^9 + 591483860561978*L.1^8 - 902971574459224*L.1^7 -
+        3867932050971015*L.1^6 + 10726748203051717*L.1^5 + 2565141113824127*L.1^4 -
+        12935605687412141*L.1^3 - 2368473581451245*L.1^2 - 4470899136527026*L.1 +
+        7817007476612275)*theta^2
+    + 1/451490325088687676*(-264450362470058*L.1^11 +
+        225171112318735*L.1^10 + 1187954675970092*L.1^9 - 3404163572734589*L.1^8 +
+        4440537818259040*L.1^7 + 30391655964916716*L.1^6 - 55462188750906306*L.1^5 -
+        52813838184686080*L.1^4 + 46977500067967330*L.1^3 + 38528696540450822*L.1^2
+        + 36334338172887422*L.1 - 8719180616838316)*theta
+    + 1/225745162544343838*(-242201047881185*L.1^11 + 2695048438624322*L.1^10 -
+        2471629784125880*L.1^9 - 16642714150664462*L.1^8 + 38892823588188046*L.1^7 -
+        22114379380173590*L.1^6 - 325953030704424076*L.1^5 +
+        660106422014819646*L.1^4 + 588279967489268250*L.1^3 -
+        722644453311292854*L.1^2 - 945905335539394190*L.1 - 1073599749801027758),
+    1/902980650177375352*(31304247648858*L.1^11 + 54115388455883*L.1^10 -
+        193826670444283*L.1^9 - 46256573101173*L.1^8 + 379613473715218*L.1^7 -
+        4622387847104159*L.1^6 - 3705220273288565*L.1^5 + 20815949854694092*L.1^4 +
+        18237471387982634*L.1^3 - 22930804992580296*L.1^2 - 35856846286277798*L.1 -
+        16338595688110662)*theta^2
+    + 1/225745162544343838*(282873505476495*L.1^11 -
+        188080723273943*L.1^10 - 1525371270561907*L.1^9 + 3060692892487459*L.1^8 -
+        4009803117254999*L.1^7 - 33759038128184897*L.1^6 + 55145150947522743*L.1^5 +
+        85618549813075803*L.1^4 - 15660722123622977*L.1^3 - 53151760798091948*L.1^2
+        - 191149736997756178*L.1 - 71504554310405916)*theta
+    + 1/112872581272171919*(884699516082982*L.1^11 - 2410861598105040*L.1^10 -
+        3648864414737724*L.1^9 + 18062714932920560*L.1^8 - 32297060270929114*L.1^7 -
+        78041784813602566*L.1^6 + 388221446404242986*L.1^5 - 44743099078781068*L.1^4
+        - 451791748976347816*L.1^3 - 52219973453733760*L.1^2 -
+        295015248411929032*L.1 - 53636230336301516),
+    1/902980650177375352*(-69875857710848*L.1^11 + 24848085565786*L.1^10 +
+        400724107147174*L.1^9 - 541108182188877*L.1^8 + 565775275527326*L.1^7 +
+        8396411144676731*L.1^6 - 9616938648771493*L.1^5 - 28753611991047114*L.1^4 -
+        10486262089820380*L.1^3 + 46340214367295938*L.1^2 + 52659433946594168*L.1 -
+        29970801604752)*theta^2
+    + 1/451490325088687676*(478848759075506*L.1^11 -
+        187777381907299*L.1^10 - 3007500781096968*L.1^9 + 3930589755893049*L.1^8 -
+        3012280729044630*L.1^7 - 60481715541332910*L.1^6 + 71977662151750978*L.1^5 +
+        223746653271143658*L.1^4 + 19239057559740256*L.1^3 -
+        348735387624189866*L.1^2 - 305047173680993582*L.1 - 8181739017250984)*theta
+    + 1/225745162544343838*(2574512964741143*L.1^11 - 763038708712276*L.1^10 -
+        14864663923665962*L.1^9 + 20773133324321996*L.1^8 - 22189758852995762*L.1^7
+        - 316027991290900108*L.1^6 + 366839868427702804*L.1^5 +
+        1046250503339674118*L.1^4 + 314327833059221038*L.1^3 -
+        1142590980033445650*L.1^2 - 2276888370055259646*L.1 - 905471283937850268)
+    ];
+end if;
+
+info54a1 := check_exclude(pol0, L, SelEgens, [2^-5]);
+printf "This has verified that Q = phi(1) - can is incompatible with the Selmer group.\n";
+L54a1 := L;
+imSelset, pr2seq, Kseq, mseq, th := Explode(info54a1);
+
+// use higher precision
+PwsQ<t> := LaurentSeriesAlgebra(Rationals() : Precision := 50);
+PPwsQ := PolynomialRing(PwsQ);
+// now parameterize around infinity
+L2 := NumberField(x^11 - 2);
+PwsL2<T> := LaurentSeriesAlgebra(L2 : Precision := 50);
+PPwsL2 := PolynomialRing(PwsL2);
+// there are two branches, one defined over Q, one defined over L
+xserQ := Roots(Evaluate(polxj, [PPwsQ.1, 2^-5*t^-11]))[1,1];
+yserQ := yfunc(xserQ, 2^-5*t^-11);
+xserL := Roots(Evaluate(polxj, [PPwsL2.1, 2^-5*T^-11]))[1,1];
+yserL := yfunc(xserL, 2^-5*T^-11);
+// Take difference with canonical point.
+diffptQ := X0_11(PwsQ)![xserQ, yserQ];
+diffptL := X0_11(PwsL2)![xserL, yserL] - X0_11(PwsL2)![16,60];
+pr2seq2 := [e[1] : e in Decomposition(Integers(L2), 2)];
+assert #pr2seq2 eq 1;
+pr := pr2seq2[1];
+// check that half this point at T = 2 does not map into image of Selmer group
+xvalQ := (Kseq[1,1]!Evaluate(diffptQ[1], 2)) @@ Kseq[1,2];
+LtoK2 := hom<L2 -> Kseq[2,1] | Roots(x^11-2, Kseq[2,1])[1,1]>;
+xvalL := LtoK2(Evaluate(diffptL[1], 2)) @@ Kseq[2,2];
+assert mseq[1](xvalQ - th) eq Codomain(mseq[1])!0
+         and mseq[2](xvalL - th) eq Codomain(mseq[2])!0;
+xval1 := <halve(Kseq[1,2](xvalQ)), halve(Kseq[2,2](xvalL))>;
+assert <mseq[i]((xval1[i] @@ Kseq[i,2]) - th) : i in [1..#mseq]> notin imSelset;
+printf "Verified that Q with 2*Q = phi(2) - can does not map into image of Selmer group\n";
