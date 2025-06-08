@@ -112,7 +112,7 @@ function set_str(s, width)
   return " "^Max(0, Floor((width - #str)/2))*str*" "^Max(0, Ceiling((width - #str)/2));
 end function;
 
-printf "Table 2: Factorization types\n\n";
+printf "Table 4: Factorization types\n\n";
 printf "| factorization type of hᵢ |                    i ∈ I                     |\n";
 printf "+--------------------------+----------------------------------------------+\n";
 i1 := {i : i in indices | ftypes[i,1] eq {* 1, 1, 10 *}};
@@ -202,8 +202,8 @@ function hasprimitivesolution(trip, p)
   return result;
 end function;
 
-// Compute Table 3
-printf "Table 3: non-excluded residue classes for p = 2, 3\n\n";
+// Compute Table 5
+printf "Table 5: non-excluded residue classes for p = 2, 3\n\n";
 printf "|  i |          p = 2           |                 p = 3                  |\n";
 printf "+----+--------------------------+----------------------------------------+\n";
 for i -> trip in trips do
@@ -387,7 +387,7 @@ function Frey(a,b,d);
 end function;
 
 
-printf "Table 4: Correspondence for i ∈ ℐ\n\n";
+printf "Table 6: Correspondence for i ∈ ℐ\n\n";
 
 printf "|  i |    W    |     d      | type |\n";
 printf "+----+---------+------------+------+\n";
@@ -424,7 +424,7 @@ for i in Sort(Setseq(I)) do
 end for;
 printf "+----+---------+------------+------+\n\n";
 
-printf "\nTable 5: Correspondence to CM curves\n\n";
+printf "\nTable 7: Correspondence to CM curves\n\n";
 
 printf "|  i |    W    |     d      | type |\n";
 printf "+----+---------+------------+------+\n";
@@ -581,8 +581,8 @@ im := func<pol | &+[Integers()!(Eltseq(cs[i])[2])*XX^Degree(ms[i], U)*ZZ^Degree(
                   where cs, ms := CoefficientsAndMonomials(pol)>;
 PZi := PolynomialRing(Zi);
 
-// Record the data in Table 6.
-table6 := [
+// Record the data in Table 8.
+table8 := [
   <(3 + 6*ii)*U^2 + V^2, 3, 2, -1, 6*XX*ZZ>,
   <(-3 + 6*ii)*U^2 + V^2, 3, 2, 1, 6*XX*ZZ>,
   <(2 - 3*ii)*U^2 + 2*U*V + 2*V^2, -3, 2, 1, 3*XX*(XX + 2*ZZ)>,
@@ -593,7 +593,7 @@ table6 := [
 
 // Check the specification.
 for j -> f in h48fact do
-  H, ga, al, be, S := Explode(table6[j]);
+  H, ga, al, be, S := Explode(table8[j]);
   assert H*conj(H) eq P2Zi!f[1]; // hᵢ₄ is the product of Hᵢ and its conjugate
   assert Set(PrimeDivisors(Norm(Resultant(Evaluate(H, [PZi.1, 1]), Evaluate(conj(H), [PZi.1, 1])))))
            subset {2, 3};
@@ -605,7 +605,7 @@ pol_im := 5*x - 10*x^3 + x^5;
 
 // Compute right hand sides of genus 4 hyperelliptic equations.
 Fseq := [];
-for j -> t in table6 do
+for j -> t in table8 do
   _, ga, al, be := Explode(t);
   Append(~Fseq, ga*(al*pol_re + be*pol_im)*pol_im);
 end for;
