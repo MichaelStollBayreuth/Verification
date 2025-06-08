@@ -318,36 +318,116 @@ function FNSinfo(i)
   // Now consider all possible combinations of 2-adic and 3-adic conditions...
   inters := {<e2[1] meet e3[1], e2[2] meet e3[2]> : e2 in twc2, e3 in twc3};
   // ...and return their union.
-  return &join{e[1] : e in inters}, &join{e[2] : e in inters};
+  return &join{e[1] : e in inters}, &join{e[2] : e in inters},
+         {e : e in pairs2 | IsDefined(HT2, e) and
+                              exists{p : p in inters | not IsEmpty(p[1] meet HT2[e][1])
+                                                        and not IsEmpty(p[2] meet HT2[e][2])}};
 end function;
 
-printf "Table 4: Correspondence for i ∈ ℐ (without the symplectic type)\n\n";
+// The following function implements Theorem 9 in [FK22].
+// It assumes that the given curves have isomorphic p-torsion modules,
+// but does not check this.
+// If the given curves are not p-congruent, the output is either an error or meaningless.
+function H8test(E1, E2, p)
+  // E1, E2: elliptic curves over Q
+  // p: a prime number >= 5
+  assert IsPrime(p) and p ge 5;
+  if Valuation(Conductor(E1), 2) eq 6 then
+    // Twist by 2
+    E1 := QuadraticTwist(E1, 2);
+    E2 := QuadraticTwist(E2, 2);
+  end if;
+  // Check that the conductor exponents agree
+  val2 := Valuation(Conductor(E1), 2);
+  assert val2 eq Valuation(Conductor(E2), 2);
+  // Compute invariants.
+  valDisc1 := Valuation(Discriminant(E1), 2);
+  c41, c61 := Explode(cInvariants(E1));
+  valc41 := Valuation(c41, 2);
+  c41p := Integers()!(c41/2^valc41);
+  valc61 := Valuation(c61, 2);
 
-printf "|  i |    W    |     d      |\n";
-printf "+----+---------+------------+\n";
+  valDisc2 := Valuation(Discriminant(E2), 2);
+  c42, c62 := Explode(cInvariants(E2));
+  valc42 := Valuation(c42, 2);
+  c42p := Integers()!(c42/2^valc42);
+  valc62 := Valuation(c62,2);
+
+  if val2 eq 5 then
+    if LegendreSymbol(2, p) eq 1 then
+      return 1;
+    else
+      flag1 := ([valc41, valDisc1] eq [4, 6] and valc61 ge 7 and (c41p + 1) mod 4 eq 0)
+                  or [valc41, valc61, valDisc1] eq [7, 9, 12];
+      flag2 := ([valc42, valDisc2] eq [4, 6] and valc62 ge 7 and (c42p + 1) mod 4 eq 0)
+                  or [valc42, valc62, valDisc2] eq [7, 9, 12];
+      return flag1 eq flag2 select 1 else -1;
+    end if;
+  elif val2 eq 8 then
+    if ([valc41, valDisc1] eq [5, 9] and valc61 ge 9)
+          or ([valc41, valDisc1] eq [7, 15] and valc61 ge 12) then
+      assert ([valc42, valDisc2] eq [5, 9] and valc62 ge 9)
+              or ([valc42, valDisc2] eq [7, 15] and valc62 ge 12);
+      if LegendreSymbol(2, p) eq 1 then
+        return 1;
+      else
+        return (c41p - c42p) mod 4 eq 0 select 1 else -1;
+      end if;
+    else
+      error "Conductor at 2 is 2^8 but inertia not of type H₈";
+    end if;
+  else
+    error "Inertia not of type H₈";
+  end if;
+end function;
+
+// The Frey curve associated to a pair (a, b) and a twist parameter d.
+function Frey(a,b,d);
+  return QuadraticTwist(EllipticCurve([0, 0, 0, 3*b, -2*a]), d);
+end function;
+
+
+printf "Table 4: Correspondence for i ∈ ℐ\n\n";
+
+printf "|  i |    W    |     d      | type |\n";
+printf "+----+---------+------------+------+\n";
 for i in Sort(Setseq(I)) do
-  twists, curves := FNSinfo(i);
+  twists, curves, pairs := FNSinfo(i);
+  twists1 := twists;
   tw := {Parent("")| };
   count := 0;
-  while not IsEmpty(twists) do
-    d := Rep(twists);
-    if -d in twists then
-      twists diff:= {d, -d};
+  while not IsEmpty(twists1) do
+    d := Rep(twists1);
+    if -d in twists1 then
+      twists1 diff:= {d, -d};
       Include(~tw, "±"*IntegerToString(Abs(d)));
       count +:= 1;
     else
-      Exclude(~twists, d);
+      Exclude(~twists1, d);
       Include(~tw, IntegerToString(d));
     end if;
   end while;
-  printf "| %2o |%o|%o|\n", i, set_str(curves, 9), set_str(tw, 12 + count);
+  assert #curves eq 1;
+  // Determine symplectic type.
+  if i eq 22 then
+    type := {-1}; // special case; see paper
+  else
+    E1 := EllipticCurve(Rep(curves));
+    type := {H8test(E1, E2, 5) : e in pairs, d in twists
+                               | Valuation(Conductor(E2), 2) eq 5
+                                 where E2 := Frey(e[1], e[2], d)};
+  end if;
+  assert #type eq 1;
+  t := Rep(type);
+  printf "| %2o |%o|%o|  %o   |\n", i, set_str(curves, 9), set_str(tw, 12 + count),
+                                    t eq 1 select "+" else "-";
 end for;
-printf "+----+---------+------------+\n\n";
+printf "+----+---------+------------+------+\n\n";
 
-printf "\nTable 5: Correspondence to CM curves (without the symplectic type)\n\n";
+printf "\nTable 5: Correspondence to CM curves\n\n";
 
-printf "|  i |    W    |     d      |\n";
-printf "+----+---------+------------+\n";
+printf "|  i |    W    |     d      | type |\n";
+printf "+----+---------+------------+------+\n";
 for i in Sort(Setseq(ICM)) do
   twists, curves := FNSinfo(i);
   tw := {Parent("")| };
@@ -363,9 +443,9 @@ for i in Sort(Setseq(ICM)) do
       Include(~tw, IntegerToString(d));
     end if;
   end while;
-  printf "| %2o |%o|%o|\n", i, set_str(curves, 9), set_str(tw, 12 + count);
+  printf "| %2o |%o|%o|  +   |\n", i, set_str(curves, 9), set_str(tw, 12 + count);
 end for;
-printf "+----+---------+------------+\n\n\n";
+printf "+----+---------+------------+------+\n\n\n";
 
 
 // Section 6
