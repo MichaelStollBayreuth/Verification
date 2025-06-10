@@ -1,12 +1,17 @@
 # Verification
 
-This repository contains files with (mostly Magma) code for verifying computational assertions in some of my papers.
+This repository contains files with (mostly [Magma](https://magma.maths.usyd.edu.au/magma/)) code
+for verifying computational assertions in some of my papers.
 
 ## The Generalized Fermat Equation $x^2 + y^3 = z^{25}$
 
 (With Nuno Freitas)
 
 A file with Magma code verifying the claims in the paper is [here](GenFermat_2_3_25/2_3_25.magma)
+
+**NOTE** When running this with a version of Magma up to and including 2.28-23,
+the computation of the first Selmer set in Section 7 produces an error.
+This (and some similar errors) should be fixed in one of the next releases of Magma.
 
 ## The surface parametrizing cuboids
 
