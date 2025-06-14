@@ -5,9 +5,10 @@ for verifying computational assertions in some of my papers.
 
 ## The Generalized Fermat Equation $x^2 + y^3 = z^{25}$
 
-(With Nuno Freitas)
+(With Nuno Freitas; [arXiv](https://arxiv.org/abs/2506.10667))
 
-A file with Magma code verifying the claims in the paper is [here](GenFermat_2_3_25/2_3_25.magma)
+The file [2_3_25.magma](GenFermat_2_3_25/2_3_25.magma) contains Magma code verifying
+the claims in the paper.
 
 **NOTE** When running this with a version of Magma up to and including 2.28-23,
 the computation of the first Selmer set in Section 7 produces an error.
