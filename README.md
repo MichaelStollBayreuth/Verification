@@ -14,9 +14,9 @@ the claims in the paper.
 the computation of the first Selmer set in Section 7 produces an error.
 This (and some similar errors) should be fixed in one of the next releases of Magma.
 
-## The surface parametrizing cuboids
+## Curves on the surface of cuboids
 
-(With Damiano Testa; [arXiv](https://arxiv.org/abs/1009.0388))
+(With Damiano Testa; [arXiv](https://arxiv.org/abs/1009.0388); [DOI](https://doi.org/10.1090/mcom/4238))
 
 * [cuboids.magma](Cuboids/cuboids.magma):
   this contains code to verify many of the computationsl results.
@@ -26,7 +26,7 @@ This (and some similar errors) should be fixed in one of the next releases of Ma
 
 ## Prime numbers and dynamics of the polynomial $x^2 - 1$
 
-(With Ivan Penkov; [arXiv](https://arxiv.org/abs/2502.11929))
+(With Ivan Penkov; [arXiv](https://arxiv.org/abs/2502.11929); [DOI](https://doi.org/10.56994/JXM.002.001.008))
 
 The file [Penkov_question.magma](PenkovQuestion/Penkov_question.magma)
 contains code to verify the results in Section 3.
