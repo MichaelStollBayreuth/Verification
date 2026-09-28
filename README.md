@@ -3,6 +3,35 @@
 This repository contains files with (mostly [Magma](https://magma.maths.usyd.edu.au/magma/)) code
 for verifying computational assertions in some of my papers.
 
+## Prime order torsion on elliptic curves over number fields, Part I: Asymptotics
+
+(With Maarten Derickx; [arXiv](https://arxiv.org/abs/2505.14109))
+
+* [main.magma](PrimeTorsion_Asymptotics/main.magma):
+  this runs section6.magma and section8.magma and then checks Table 2
+  for all primes up to a bound (5000 by default; the file explains how to
+  change the bound and how to use several Magma processes), and so verifies
+  everything (up to the bound for Table 2).
+
+* [strange_primes.magma](PrimeTorsion_Asymptotics/strange_primes.magma):
+  this contains the code that determines the strange primes and characters
+  (Section 5, Table 2); it is loaded by the other files. Checking the complete
+  Table 2 (all primes below 100000) takes about 20 CPU days.
+
+* [section6.magma](PrimeTorsion_Asymptotics/section6.magma):
+  this checks the computations in Section 6 (about half a minute).
+
+* [section8.magma](PrimeTorsion_Asymptotics/section8.magma):
+  this checks the computations in Section 8 (about one hour; needs 18 GB of memory).
+
+* [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
+  [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
+  [lmfdb_ec_curvedata_even_rank.m](PrimeTorsion_Asymptotics/lmfdb_ec_curvedata_even_rank.m):
+  data downloaded from the LMFDB (newforms of weight 2 and prime level with
+  analytic rank at least 2; newforms of weight 2 and prime level between 10000
+  and 1000000 whose Galois orbit has size at most 6; elliptic curves of prime
+  conductor below 300 million with positive even rank), loaded by section8.magma.
+
 ## The Generalized Fermat Equation $x^2 + y^3 = z^{25}$
 
 (With Nuno Freitas; [arXiv](https://arxiv.org/abs/2506.10667))

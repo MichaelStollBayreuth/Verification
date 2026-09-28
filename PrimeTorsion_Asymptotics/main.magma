@@ -1,0 +1,97 @@
+/*****************************************************************************
+
+  main.magma
+
+  Magma code verifying the computational claims in
+
+    Maarten Derickx and Michael Stoll,
+    Prime order torsion on elliptic curves over number fields,
+    Part I: Asymptotics.
+
+  Written for Magma V2.29 by Claude Code (Fable 5.1).
+
+  This file runs section6.magma and section8.magma, which verify the claims
+  in Sections 6 and 8 (about 25 seconds and about one hour, respectively;
+  section8.magma needs up to 18 GB of memory), and then checks Table 2
+  (the strange primes and their strange characters, Section 5) for all
+  primes p <= B with the code in strange_primes.magma. The bound B and the
+  number NPROC of Magma processes used for this check are set below; they
+  can also be given on the command line, e.g.
+
+    magma -b B:=20000 NPROC:=4 main.magma
+
+  With the default B = 5000, the Table 2 check takes about 20 minutes on one
+  core (B = 10000: about 3 hours); the complete Table 2 (B = 100000) takes
+  about 20 CPU days.
+
+  With NPROC > 1 (Unix only), this process starts NPROC - 1 further Magma
+  processes with the command MAGMA (set below), each handling every NPROC-th
+  prime and writing its output to table2_part_k.log and its screening
+  results to results_k.txt (k = 2, ..., NPROC); it handles part 1 itself,
+  waits for the other parts and then checks their logs. An interrupted run
+  can be restarted with the same command; the results files make each part
+  continue where it stopped. A single part can also be run by hand:
+
+    magma -b B:=20000 PART:=3 NPROC:=4 main.magma
+
+  runs part 3 of 4 of the Table 2 check for B = 20000 (and nothing else).
+
+*****************************************************************************/
+
+SetQuitOnError(true); // stop at the first failed assertion or error
+
+// Parameters (a value given on the command line is a string).
+B := assigned B select StringToInteger(B) else 5000;
+NPROC := assigned NPROC select StringToInteger(NPROC) else 1;
+MAGMA := "magma"; // the command starting Magma (only used if NPROC > 1)
+
+load "strange_primes.magma";
+
+// A single part of the Table 2 check (started below if NPROC > 1).
+if assigned PART then
+  PART := StringToInteger(PART);
+  check_table2(2, B : part := <PART, NPROC>, file := Sprintf("results_%o.txt", PART));
+  quit;
+end if;
+
+t0 := Cputime();
+
+load "section6.magma";
+load "section8.magma";
+
+//============================================================================
+printf "\n=============================================================================\n";
+printf "Table 2: the strange primes p <= %o\n", B;
+printf "=============================================================================\n\n";
+
+if NPROC eq 1 then
+  check_table2(2, B);
+else
+  logs := [Sprintf("table2_part_%o.log", k) : k in [1..NPROC]];
+  for k := 2 to NPROC do
+    System(Sprintf("%o -b B:=%o PART:=%o NPROC:=%o main.magma > %o 2>&1 &",
+                   MAGMA, B, k, NPROC, logs[k]));
+  end for;
+  printf "Started %o further Magma processes for parts 2 to %o (see %o, ...).\n\n",
+         NPROC - 1, NPROC, logs[2];
+  check_table2(2, B : part := <1, NPROC>, file := "results_1.txt");
+  // Wait for the other parts; each ends with a line "check_table2(...): ...".
+  contents := function(log)
+    try s := Read(log); catch e s := ""; end try;
+    return s;
+  end function;
+  finished := func<log | Index(contents(log), "check_table2(") ne 0>;
+  while not forall{log : log in logs[2..NPROC] | finished(log)} do
+    System("sleep 60");
+  end while;
+  for k := 2 to NPROC do
+    s := contents(logs[k]);
+    i := Index(s, "check_table2(");
+    printf "%o", s[i..#s];
+    assert Index(s, "all results agree with Table 2") ne 0;
+  end for;
+end if;
+
+printf "\nAll claims verified. Total time (this process): %o seconds.\n", Cputime(t0);
+
+quit;
