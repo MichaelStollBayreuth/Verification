@@ -131,6 +131,23 @@
   The verification step for the 75 candidates takes a few CPU hours in total
   (5 minutes for p = 96289).
 
+  Lean variant (screen_character_lean, screen_prime_lean, strange_orders_lean;
+  added after the run for Table 2, for the search beyond 10^5). Instead of
+  the Krylov space and its rank, it computes the linear complexity of the
+  scalar sequence u . (e' T^i) for a random vector u (Wiedemann's idea,
+  Berlekamp-Massey): this is a lower bound for dim F_q[T] e', so the value
+  dim S certifies that the Hecke module of e' is all of S. It tries T = T_2
+  and then random linear combinations of T_2, T_3, ... (up to four trials)
+  and hands the remaining cases to screen_character. The cuspidal subspace is
+  not constructed (dim S = dim M - 2, see the code), the dense Hecke matrices
+  are discarded once converted, and no dense dS x dim M matrix is ever formed.
+  Results are identical; at p near 10^5 one character takes the same time
+  and 3.2 instead of 5 GB, at p near 2 * 10^5 it takes 140 instead of 550
+  seconds and 10 instead of 17 GB (the dense rank computation dominates the
+  original code there). A long run should use one Magma process per prime
+  (a Magma process slows down considerably over days); see search_prime.m
+  and run_search.sh.
+
   ---------------------------------------------------------------------------
   Usage (B is the upper bound for the range of primes)
   ---------------------------------------------------------------------------
@@ -157,6 +174,10 @@
     // 16 is the number of processes, 3 is the index (1-based) within this number.
     check_table2(2, B : part := <3, 16>, file := "results_3.txt");
     check_results(["results_" cat IntegerToString(k) cat ".txt" : k in [1..16]]);
+
+    strange_orders_lean(8713); // as strange_orders, with the lean screening
+    // Search beyond 10^5 with one Magma process per prime, run by GNU parallel:
+    //   ./run_search.sh 100001 200000 12 30G     (see run_search.sh)
 
 *****************************************************************************/
 
@@ -390,6 +411,111 @@ function screen_prime(p)
   return cands;
 end function;
 
+//============================================================================
+// Step 1': lean screening (Wiedemann / Berlekamp-Massey)
+//============================================================================
+//
+// A variant of screen_character that certifies "chi is not strange" without
+// dense linear algebra, for use beyond the range of Table 2 (see the header).
+// It gives the same results (the candidate tuples are produced by the
+// original code, to which it falls back); the code of record for Table 2 is
+// screen_character above.
+
+// The Hecke operator T_l as a sparse matrix; the dense matrix that Magma
+// caches in M is discarded.
+function sparse_hecke_lean(M, l)
+  T := SparseMatrix(HeckeOperator(M, l));
+  M`hecke_operator := [];
+  return T;
+end function;
+
+// The linear complexity (Berlekamp-Massey) of the sequence u . (v T^i),
+// i < 2 k, for a random vector u in V: a lower bound for dim F_q[T] v, with
+// equality with probability at least 1 - k/q.
+function krylov_dimension_bound(v, T, k, V, Fq)
+  u := Random(V);
+  uc := Matrix(Fq, Degree(V), 1, Eltseq(u));
+  seq := [Fq| ];
+  for i in [1..2*k] do
+    Append(~seq, (v*uc)[1]);
+    v := v*T;
+  end for;
+  C, L := BerlekampMassey(seq);
+  return L;
+end function;
+
+// Same input and output as screen_character.
+function screen_character_lean(chi : trials := 4)
+  t0 := Cputime();
+  p := Modulus(chi);
+  n := Order(chi);
+  Fq := BaseRing(chi);
+  PF := PolynomialRing(Fq);
+  z := chi(PrimitiveRoot(p));
+  M := ModularSymbols(chi, 2, +1);
+  // dim S = dim M - 2: the boundary space is spanned by the cusps 0 and oo
+  // (neither is killed by the even character chi), and the boundary map is
+  // onto (it maps {0, oo} to [oo] - [0] and {0, a/b} to (chi(b)^-1 - 1)[0]).
+  // The star involution fixes both cusps, so this holds for the plus
+  // quotient as well.
+  assert Rank(BoundaryMap(M)) eq 2;
+  dS := Dimension(M) - 2;
+  if dS le 0 then return <0, 2, PF!1, z>; end if;
+  V, VtoM, MtoV := VectorSpace(M);
+  e := MtoV(M!<1, [Cusps()| 0, Infinity()]>); // the winding element {0, oo}
+  ops := AssociativeArray(Integers());
+  ops[2] := sparse_hecke_lean(M, 2);
+  e1 := eisenstein_killer(e, ops[2], 2, chi(2));
+  if IsZero(e1) then
+    ops[3] := sparse_hecke_lean(M, 3);
+    e1 := eisenstein_killer(e, ops[3], 3, chi(3));
+  end if;
+  t1 := Cputime(t0);
+  // Trial 1 uses T = T_2, trial k a random linear combination of T_2 and the
+  // next k - 1 odd primes' Hecke operators. The span of e' under any element
+  // T of the Hecke algebra is contained in the Hecke module of e', so linear
+  // complexity dS certifies that the module is all of S (rigorously; a
+  // smaller value can also be due to an unlucky choice, hence the trials).
+  // Otherwise the original code decides (and produces the candidate data).
+  lseq := [l : l in PrimesUpTo(L_MAX) | l gt 2 and l ne p];
+  for trial in [1..Min(trials, #lseq + 1)] do
+    if trial eq 1 then
+      T := ops[2];
+    else
+      l := lseq[trial - 1];
+      if not IsDefined(ops, l) then ops[l] := sparse_hecke_lean(M, l); end if;
+      T := ops[2] + &+[Random(Fq)*ops[l] : l in lseq[1..trial-1]];
+    end if;
+    L := krylov_dimension_bound(e1, T, dS, V, Fq);
+    vprintf User2: "    order %o: dim S = %o, linear complexity %o (trial %o; setup %o s, total %o s)\n",
+                   n, dS, L, trial, t1, Cputime(t0);
+    if L eq dS then return <0, 2, PF!1, z>; end if;
+  end for;
+  vprintf User2: "    order %o: not certified; using screen_character\n", n;
+  return screen_character(chi);
+end function;
+
+// Same as screen_prime, with the lean screening.
+function screen_prime_lean(p)
+  assert IsPrime(p);
+  if p le 3 then return []; end if;
+  t0 := Cputime();
+  q := aux_prime(p);
+  Fq := GF(q);
+  G := DirichletGroup(p, Fq);
+  cands := [];
+  for n in [n : n in Divisors(ExactQuotient(p-1, 2)) | n gt 1] do
+    chi := G.1^ExactQuotient(#G, n);
+    d, l, kerpol, z := Explode(screen_character_lean(chi));
+    if d gt 0 then
+      Append(~cands, <p, n, q, Integers()!z, d, l,
+                      [Integers()!c : c in Coefficients(kerpol)]>);
+    end if;
+  end for;
+  vprintf User1: "  p = %o: %o candidate(s) (%o s)\n", p, #cands, Cputime(t0);
+  return cands;
+end function;
+
 // Results files. screen_range and check_table2 can record their results
 // in a file, one line per prime:
 //   <p, [ candidates ]>,
@@ -565,6 +691,11 @@ end function;
 // which is empty if and only if p is not strange.
 function strange_orders(p)
   return [verify_candidate(c) : c in screen_prime(p)];
+end function;
+
+// Same as strange_orders, with the lean screening.
+function strange_orders_lean(p)
+  return [verify_candidate(c) : c in screen_prime_lean(p)];
 end function;
 
 // Compare the verified results for the prime p with Table 2 and report;

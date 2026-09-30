@@ -24,6 +24,13 @@ for verifying computational assertions in some of my papers.
 * [section8.magma](PrimeTorsion_Asymptotics/section8.magma):
   this checks the computations in Section 8 (about one hour; needs 18 GB of memory).
 
+* [search_prime.m](PrimeTorsion_Asymptotics/search_prime.m),
+  [search_job.sh](PrimeTorsion_Asymptotics/search_job.sh),
+  [run_search.sh](PrimeTorsion_Asymptotics/run_search.sh):
+  these search for strange primes beyond the range of Table 2, one Magma
+  process per prime run by GNU parallel, using the leaner screening
+  in strange_primes.magma.
+
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
   [lmfdb_ec_curvedata_even_rank.m](PrimeTorsion_Asymptotics/lmfdb_ec_curvedata_even_rank.m):
