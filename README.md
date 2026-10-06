@@ -29,7 +29,8 @@ for verifying computational assertions in some of my papers.
   [run_search.sh](PrimeTorsion_Asymptotics/run_search.sh):
   these search for strange primes beyond the range of Table 2, one Magma
   process per prime run by GNU parallel, using the leaner screening
-  in strange_primes.magma.
+  in strange_primes.magma (whose header explains how to run them and
+  what the search costs).
 
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
