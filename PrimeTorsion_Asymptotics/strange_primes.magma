@@ -93,7 +93,9 @@
   of the a_l'(f); they are small algebraic integers and are recovered from
   their reductions mod q by a closest vector computation),
   let N be the kernel of kerpol(T_l') on M (this is contained in S,
-  since the Eisenstein eigenvalues are not roots of kerpol), check that dim N = d,
+  since the Eisenstein eigenvalues are not roots of kerpol; the code checks this
+  with the Hecke-equivariant boundary map, whose kernel is S, without
+  computing a basis of N, which would cost much memory), check that dim N = d,
   decompose N into Hecke-simple pieces and test for each piece
   whether the projection of the winding element onto it vanishes
   (Magma's WindingElementProjection).
@@ -234,7 +236,11 @@
   memory; the processes compete for memory bandwidth, so more processes per
   core give diminishing returns. On a larger machine, choose NJ from the
   memory available per process at the upper end of the range, and MEMFREE
-  at about three times the memory of one process.
+  at about three times the memory of one process. The verification of a
+  strange prime needs more for some minutes: about 16 GB at p = 1.9 * 10^5
+  for a candidate with d = 1, and more for d >= 2 (rare; 131203 has d = 2),
+  since kerpol(T_l') is then evaluated as a dense matrix over Q(zeta_n);
+  leave room for one such peak.
 
 *****************************************************************************/
 
@@ -829,6 +835,21 @@ function verify_candidate(cand)
   vprintf User2: "    p = %o, n = %o: kernel polynomial for T_%o is %o\n", p, n, l, kerpol;
   // The kernel of kerpol(T_l) on M; it is contained in the cuspidal subspace.
   M := ModularSymbols(chi, 2, +1);
+  // Proof that it is: the cuspidal subspace is the kernel of the boundary
+  // map B, which is Hecke-equivariant, T_l B = B A for a matrix A (the action
+  // of T_l on the boundary symbols); if kerpol(A) is invertible, B kills the
+  // kernel of kerpol(T_l). (IsCuspidal(N) would compute a basis of N, which
+  // needs more than twice the memory of all other steps; T_l is cached in M
+  // and reused by Kernel.)
+  T := HeckeOperator(M, l);
+  B := BoundaryMap(M);
+  if Ncols(B) gt 0 then
+    ok, At := IsConsistent(Transpose(B), Transpose(T*B));
+    assert ok;
+    A := MatrixAlgebra(K, Ncols(B))!Eltseq(Transpose(At));
+    assert IsInvertible(Evaluate(kerpol, A));
+  end if;
+  delete T, B;
   N := Kernel([<l, kerpol>], M);
   vprintf User2: "      dim M = %o, kernel of kerpol(T_%o) has dimension %o (%o s)\n",
                     Dimension(M), l, Dimension(N), Cputime(t0);
@@ -838,7 +859,6 @@ function verify_candidate(cand)
            p, n, Dimension(N), d, q;
     return <n, 0, [Integers()| ], false>;
   end if;
-  assert IsCuspidal(N);
   dec := d eq 1 select [N] else NewformDecomposition(N);
   strange := [Integers()| Dimension(A) : A in dec | IsZero(WindingElementProjection(A))];
   phi := EulerPhi(n);
