@@ -2,7 +2,7 @@
 
   strange_primes.magma
 
-  Magma code for the determination of the strange primes p < 10^5
+  Magma code for the determination of the strange primes p < 2 * 10^5
   (Proposition 5.6 and Table 2) in
 
     Maarten Derickx and Michael Stoll,
@@ -180,7 +180,8 @@
     [verify_candidate(c) : c in cands];
 
     check_table2(2, B);        // compare with Table 2 for all primes in range
-    check_table2_primes();     // check the 74 primes in Table 2
+    check_table2_primes();     // check the 95 primes in Table 2 (beyond 10^5 an hour
+                               //   or more and up to 17 GB per prime)
 
     // Long runs: split into parts, one Magma process each, with results files;
     // a process that was interrupted can be restarted with the same command
@@ -252,7 +253,9 @@ Q_MIN := 2^22;
 // for stability under T_l for all primes l <= L_MAX (see above).
 L_MAX := 30;
 
-// Table 2 of the paper: <p, order of chi, strdim>.
+// Table 2 of the paper: <p, order of chi, strdim>. The entries for p < 10^5 are
+// those of the original run; the 21 entries for 10^5 < p < 2 * 10^5 come from the
+// search with the lean screening described above (2026).
 TABLE2 := [
   <61, 6, 2>, <97, 12, 4>, <101, 10, 4>, <181, 6, 2>, <193, 12, 4>, <409, 12, 4>,
   <421, 6, 2>, <733, 6, 2>, <853, 6, 2>, <1021, 30, 8>, <1777, 3, 2>, <1801, 5, 4>,
@@ -266,7 +269,12 @@ TABLE2 := [
   <41131, 3, 2>, <41593, 12, 4>, <42793, 3, 2>, <48733, 6, 2>, <52561, 3, 2>, <52691, 5, 4>,
   <53113, 12, 4>, <53857, 12, 4>, <63313, 12, 4>, <63901, 6, 2>, <65171, 5, 4>, <65449, 12, 4>,
   <66973, 6, 2>, <68737, 12, 4>, <69061, 6, 2>, <69401, 5, 4>, <69457, 4, 4>, <73009, 12, 4>,
-  <86113, 12, 4>, <86161, 4, 4>, <96289, 12, 4> ];
+  <86113, 12, 4>, <86161, 4, 4>, <96289, 12, 4>,
+  <105517, 6, 2>, <105751, 5, 4>, <109453, 6, 2>, <114553, 3, 2>, <114889, 12, 4>,
+  <131203, 3, 4>, <133117, 6, 2>, <134257, 12, 4>, <139021, 6, 2>, <140401, 3, 2>,
+  <151213, 6, 2>, <151429, 6, 2>, <155593, 12, 4>, <159073, 3, 2>, <161977, 12, 4>,
+  <162529, 3, 2>, <173431, 5, 4>, <178897, 3, 2>, <192613, 6, 2>, <195817, 12, 4>,
+  <199873, 3, 2> ];
 
 //============================================================================
 // Auxiliary functions

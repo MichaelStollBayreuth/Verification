@@ -36,11 +36,9 @@
        to the Jacobian J_p has order exactly 6, by computing the Euler factor
        at 2, which depends only on w mod 4 (and actually not on w at all).
 
-  Table 2 enters through the list TABLE2 defined in strange_primes.magma,
-  which is loaded below; that file contains the code verifying Table 2.
-  TABLE2 covers the primes p < 10^5; the entries of Table 2 for
-  10^5 < p < 2*10^5 come from the search described in the header of
-  strange_primes.magma and are listed below (TABLE2_BEYOND).
+  Table 2 (the strange primes p < 2*10^5) enters through the list TABLE2
+  defined in strange_primes.magma, which is loaded below; that file contains
+  the code verifying Table 2.
   Run this file from the directory containing strange_primes.magma.
 
   Total running time: about one minute.
@@ -48,17 +46,8 @@
 *****************************************************************************/
 
 load "strange_primes.magma"; // defines TABLE2 = [<p, n, strdim>, ...]
-
-// The entries of Table 2 for 10^5 < p < 2*10^5 (each with one strange character
-// and one Galois orbit of strange newforms), found by the search described in the
-// header of strange_primes.magma.
-TABLE2_BEYOND := [<105517, 6, 2>, <105751, 5, 4>, <109453, 6, 2>, <114553, 3, 2>, <114889, 12, 4>,
-                  <131203, 3, 4>, <133117, 6, 2>, <134257, 12, 4>, <139021, 6, 2>, <140401, 3, 2>,
-                  <151213, 6, 2>, <151429, 6, 2>, <155593, 12, 4>, <159073, 3, 2>, <161977, 12, 4>,
-                  <162529, 3, 2>, <173431, 5, 4>, <178897, 3, 2>, <192613, 6, 2>, <195817, 12, 4>,
-                  <199873, 3, 2>];
-assert forall{e : e in TABLE2 | e[1] lt 10^5};
-TABLE2_ALL := TABLE2 cat TABLE2_BEYOND;
+// Table 2 covers all primes p < 2*10^5: 95 strange primes, 96 strange characters.
+assert #{e[1] : e in TABLE2} eq 95 and #TABLE2 eq 96 and forall{e : e in TABLE2 | e[1] lt 2*10^5};
 
 t0 := Cputime();
 
@@ -186,14 +175,14 @@ printf "The two lists of primes are correct (%o and %o primes; 733 and 2917 are 
 // the single entry (p, 6, 2) (one Galois orbit of two strange newforms with character
 // of order 6). The other primes of the two lists are not strange, except 733 and 2917,
 // which are in both lists (and boldface in the second one).
-strange_primes := {e[1] : e in TABLE2_ALL};
+strange_primes := {e[1] : e in TABLE2};
 assert Set(boldface) eq {p : p in list_minus | p in strange_primes};
 assert Set(boldface_plus) eq {p : p in list_plus | p in strange_primes} diff {733, 2917};
-assert forall{p : p in boldface cat boldface_plus | [e : e in TABLE2_ALL | e[1] eq p] eq [<p, 6, 2>]};
+assert forall{p : p in boldface cat boldface_plus | [e : e in TABLE2 | e[1] eq p] eq [<p, 6, 2>]};
 // All strange orbits of length 2 with character of order 6 belong to boldface primes;
 // the other order 6 strange characters are at 1861 and 15061 (orbits of length 6 and 4):
-assert {e[1] : e in TABLE2_ALL | e[2] eq 6 and e[3] eq 2} eq Set(boldface cat boldface_plus);
-assert {e : e in TABLE2_ALL | e[2] eq 6 and e[3] ne 2} eq {<1861, 6, 6>, <15061, 6, 4>};
+assert {e[1] : e in TABLE2 | e[2] eq 6 and e[3] eq 2} eq Set(boldface cat boldface_plus);
+assert {e : e in TABLE2 | e[2] eq 6 and e[3] ne 2} eq {<1861, 6, 6>, <15061, 6, 4>};
 assert forall{p : p in [1861, 15061] | not IsSquare(p - 108) and not IsSquare(p + 108)};
 printf "The boldface primes are the primes of the second list that occur in Table 2,\n";
 printf "and 151429 in the first list; each has a single strange orbit of length 2\n";
