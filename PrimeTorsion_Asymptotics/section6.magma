@@ -22,7 +22,7 @@
     1. the symbolic claims about the family (invariance under sigma,
        fixed points, discriminant formula, squares mod 4,
        the reduction to the equation 27 t^2 + 2 u t - v^2 +- 16 = 0);
-    2. the lists of primes p < 10^5 of the form m^2 + 108 and m^2 - 108,
+    2. the lists of primes p < 2*10^5 of the form m^2 + 108 and m^2 - 108,
        the curves attached to them by the Proposition in Section 6,
        their discriminants and conductors, the simplicity of their Jacobians
        and the (non)existence of points of infinite order;
@@ -30,20 +30,35 @@
     3. the proof of Proposition 6.5 (orders of the point Q modulo 3 and 5,
        the computation of 19 Q on the Kummer surface with w indeterminate,
        the reductions modulo 11), the remark about X_1(13),
-       and the list of primes obtained for w <= 14.
+       the primes obtained for w <= 20 (all below 2*10^5) and the next one,
+       for w = 21.
        In addition it verifies that the character of the newforms attached
        to the Jacobian J_p has order exactly 6, by computing the Euler factor
        at 2, which depends only on w mod 4 (and actually not on w at all).
 
   Table 2 enters through the list TABLE2 defined in strange_primes.magma,
   which is loaded below; that file contains the code verifying Table 2.
+  TABLE2 covers the primes p < 10^5; the entries of Table 2 for
+  10^5 < p < 2*10^5 come from the search described in the header of
+  strange_primes.magma and are listed below (TABLE2_BEYOND).
   Run this file from the directory containing strange_primes.magma.
 
-  Total running time: about 30 seconds.
+  Total running time: about one minute.
 
 *****************************************************************************/
 
 load "strange_primes.magma"; // defines TABLE2 = [<p, n, strdim>, ...]
+
+// The entries of Table 2 for 10^5 < p < 2*10^5 (each with one strange character
+// and one Galois orbit of strange newforms), found by the search described in the
+// header of strange_primes.magma.
+TABLE2_BEYOND := [<105517, 6, 2>, <105751, 5, 4>, <109453, 6, 2>, <114553, 3, 2>, <114889, 12, 4>,
+                  <131203, 3, 4>, <133117, 6, 2>, <134257, 12, 4>, <139021, 6, 2>, <140401, 3, 2>,
+                  <151213, 6, 2>, <151429, 6, 2>, <155593, 12, 4>, <159073, 3, 2>, <161977, 12, 4>,
+                  <162529, 3, 2>, <173431, 5, 4>, <178897, 3, 2>, <192613, 6, 2>, <195817, 12, 4>,
+                  <199873, 3, 2>];
+assert forall{e : e in TABLE2 | e[1] lt 10^5};
+TABLE2_ALL := TABLE2 cat TABLE2_BEYOND;
 
 t0 := Cputime();
 
@@ -141,39 +156,48 @@ assert 2*(r + s + t) + (-s - 2*t) - 13*t eq 2*r + s - 13*t and (-s - 2*t) + t eq
 printf "Reduction to 27 t^2 + 2 u t - v^2 +- 16 = 0 verified.\n\n";
 
 printf "\n=============================================================================\n";
-printf "2. The primes p = m^2 +- 108 below 10^5 and their curves\n";
+printf "2. The primes p = m^2 +- 108 below 2*10^5 and their curves\n";
 printf "=============================================================================\n\n";
 
 // The lists as printed in the paper.
 list_plus := [109, 157, 229, 277, 397, 733, 1069, 1789, 2917, 4597, 5437, 6037, 6997, 7333,
               8389, 9133, 15733, 19429, 24133, 26029, 27997, 28669, 32869, 37357, 38917, 39709,
-              43789, 51637, 55333, 58189, 60133, 67189, 72469, 76837, 87133, 90709, 93133];
+              43789, 51637, 55333, 58189, 60133, 67189, 72469, 76837, 87133, 90709, 93133,
+              101869, 105733, 117757, 121909, 124717, 142237, 151429, 152989, 162517, 185869,
+              187597];
 list_minus := [13, 61, 181, 421, 733, 853, 1117, 1741, 2293, 2917, 3373, 3613, 4933, 5821, 6133,
                6781, 10093, 10501, 14533, 17053, 17581, 18661, 19213, 20341, 22093, 23917,
                30517, 32653, 36373, 43573, 48733, 51421, 54181, 55117, 57973, 60901, 63901,
-               66973, 69061, 70117, 72253, 78853, 82261, 89293, 97861];
+               66973, 69061, 70117, 72253, 78853, 82261, 89293, 97861, 101653, 105517, 109453,
+               117541, 133117, 134581, 139021, 146581, 151213, 165541, 167173, 175453, 192613];
+// The boldface primes of the second and of the first list.
 boldface := [61, 181, 421, 733, 853, 2917, 5821, 6133, 6781, 10093, 14533, 17053, 20341, 22093,
-             36373, 48733, 63901, 66973, 69061];
-assert list_plus eq [p : p in PrimesUpTo(10^5) | IsSquare(p - 108)];
-assert list_minus eq [p : p in PrimesUpTo(10^5) | IsSquare(p + 108)];
-assert #list_plus eq 37 and #list_minus eq 45;
+             36373, 48733, 63901, 66973, 69061, 105517, 109453, 133117, 139021, 151213, 192613];
+boldface_plus := [151429];
+assert list_plus eq [p : p in PrimesUpTo(2*10^5) | IsSquare(p - 108)];
+assert list_minus eq [p : p in PrimesUpTo(2*10^5) | IsSquare(p + 108)];
+assert #list_plus eq 48 and #list_minus eq 58;
 assert Set(list_plus) meet Set(list_minus) eq {733, 2917};
 printf "The two lists of primes are correct (%o and %o primes; 733 and 2917 are in both).\n",
        #list_plus, #list_minus;
 
 // Comparison with Table 2: the boldface primes are exactly the primes p = m^2 - 108
-// that are strange, and at each of them Table 2 has the single entry (p, 6, 2)
-// (one Galois orbit of two strange newforms with character of order 6).
-// None of the other primes of the two lists is strange.
-strange_primes := {e[1] : e in TABLE2};
+// that are strange, together with 151429 = 389^2 + 108; at each of them Table 2 has
+// the single entry (p, 6, 2) (one Galois orbit of two strange newforms with character
+// of order 6). The other primes of the two lists are not strange, except 733 and 2917,
+// which are in both lists (and boldface in the second one).
+strange_primes := {e[1] : e in TABLE2_ALL};
 assert Set(boldface) eq {p : p in list_minus | p in strange_primes};
-assert forall{p : p in boldface | [e : e in TABLE2 | e[1] eq p] eq [<p, 6, 2>]};
-assert forall{p : p in list_plus | p notin strange_primes or p in {733, 2917}};
-// The order 6 strange characters at 1861 and 15061 (orbits of length 6 and 4):
-assert {e : e in TABLE2 | e[2] eq 6 and e[3] ne 2} eq {<1861, 6, 6>, <15061, 6, 4>};
+assert Set(boldface_plus) eq {p : p in list_plus | p in strange_primes} diff {733, 2917};
+assert forall{p : p in boldface cat boldface_plus | [e : e in TABLE2_ALL | e[1] eq p] eq [<p, 6, 2>]};
+// All strange orbits of length 2 with character of order 6 belong to boldface primes;
+// the other order 6 strange characters are at 1861 and 15061 (orbits of length 6 and 4):
+assert {e[1] : e in TABLE2_ALL | e[2] eq 6 and e[3] eq 2} eq Set(boldface cat boldface_plus);
+assert {e : e in TABLE2_ALL | e[2] eq 6 and e[3] ne 2} eq {<1861, 6, 6>, <15061, 6, 4>};
 assert forall{p : p in [1861, 15061] | not IsSquare(p - 108) and not IsSquare(p + 108)};
 printf "The boldface primes are the primes of the second list that occur in Table 2,\n";
-printf "each with a single strange orbit of length 2 and character of order 6.\n\n";
+printf "and 151429 in the first list; each has a single strange orbit of length 2\n";
+printf "and character of order 6, and these are all such orbits in Table 2.\n\n";
 
 // Representation 4p = u^2 + 27 v^2 with u, v >= 0
 function rep_4p(p)
@@ -207,7 +231,7 @@ function curve_from_prime(p, eps)
   return curve(r, s, t), r, s, t, u, v, m;
 end function;
 
-// Now check all 84 curves. For each curve we verify:
+// Now check all 106 curves (two each for 733 and 2917). For each curve we verify:
 //  * the model has discriminant +-2^20 p^2 and the minimal model
 //    has discriminant +-p^2 = Delta/2^20 (the paper only needs that the
 //    conductor divides p^2; we also let Magma compute the conductor);
@@ -216,8 +240,9 @@ end function;
 //      y^2 = x z (x - z) (r' x z (x - z) + 4 F2)  with r' = +-m - 2 = 1 mod 4,
 //    the cubic factor has cyclic Galois group, 2 is a cube mod p,
 //    and the alternative r' = +-m + 2, s = -4 gives an isomorphic curve;
-//  * the rank of J(Q): for the boldface primes we exhibit a point
-//    of infinite order; for the other primes, the 2-descent rank bound is 0 in most cases,
+//  * the rank of J(Q): for the boldface primes we exhibit a point of infinite order
+//    (given below by its Kummer coordinates, found with the program j-points);
+//    for the other primes, the 2-descent rank bound is 0 in most cases,
 //    and otherwise the rank must be 0 because p is not strange (see below).
 //
 // Argument for the last point (from the paper): J is simple with Z[omega] in
@@ -227,13 +252,46 @@ end function;
 // so g is strange and p is a strange prime. Conversely, if p is strange
 // with the single strange orbit of Table 2 and J(Q) has positive rank,
 // then g's orbit is that strange orbit, which has character of order 6.
-// This shows that the boldface primes are exactly the primes p = m^2 - 108
+// This shows that the boldface primes are exactly the primes in the two lists
 // whose curve has a Jacobian of positive rank, and that the strange newforms
 // at these primes are the newforms attached to these curves.
 
+// Points of infinite order on the Jacobians of the curves at the boldface primes:
+// <p, eps, Kummer coordinates> for p = m^2 + eps*108, on the Jacobian of the model
+// y^2 = f(x) returned by curve_from_prime.
+POINTS := [
+  <61, -1, [0, 1, 1, 0]>,
+  <181, -1, [1, 2, 1, -2]>,
+  <421, -1, [1, 2, 1, -2]>,
+  <733, -1, [1, 1, 0, 0]>,
+  <853, -1, [1, 2, 1, -2]>,
+  <2917, -1, [1, -2, 1, -1]>,
+  <5821, -1, [1, 2, 1, 7]>,
+  <6133, -1, [2, 5, 2, 16]>,
+  <6781, -1, [1, 2, 1, -2]>,
+  <10093, -1, [0, 1, 0, 2]>,
+  <14533, -1, [0, 1, 0, 2]>,
+  <17053, -1, [1, -2, -1, 6]>,
+  <20341, -1, [0, 1, 0, 2]>,
+  <22093, -1, [1, 2, 1, 7]>,
+  <36373, -1, [3, -3, -2, -14]>,
+  <48733, -1, [0, 1, 0, 2]>,
+  <63901, -1, [1, 2, 1, 7]>,
+  <66973, -1, [5, 8, -1, 19]>,
+  <69061, -1, [0, 1, 1, 22]>,
+  <105517, -1, [1, -4, -1, -117]>,
+  <109453, -1, [16, -128, -20, -1561]>,
+  <133117, -1, [4, 18, 7, -43]>,
+  <139021, -1, [12, 22, 7, -195]>,
+  <151213, -1, [1, 2, 1, 7]>,
+  <192613, -1, [4, 4, 1, 110]>,
+  <151429, 1, [9, -3748, -36, 99]>
+];
+assert {<e[1], e[2]> : e in POINTS} eq {<p, -1> : p in boldface} join {<p, 1> : p in boldface_plus};
+
 curves := AssociativeArray(); // p -> [curves] (two curves for 733 and 2917)
 rank_by_table2 := [];         // curves where the rank bound is not 0
-printf "Checking the %o curves ...\n", #list_plus + #list_minus + 2;
+printf "Checking the %o curves ...\n", #list_plus + #list_minus;
 for eps in [1, -1] do
   for p in (eps eq 1 select list_plus else list_minus) do
     C, r, s, t, u, v, m := curve_from_prime(p, eps);
@@ -256,10 +314,12 @@ for eps in [1, -1] do
     else
       assert t ne 0;
     end if;
-    if eps eq -1 and p in boldface then
-      // a point of infinite order on J
-      pts := Points(J : Bound := 100);
-      assert exists{pt : pt in pts | Order(pt) eq 0};
+    if p in (eps eq 1 select boldface_plus else boldface) then
+      // a point of infinite order on J (C and Cmin are isomorphic)
+      J1 := Jacobian(C);
+      k := [e[3] : e in POINTS | e[1] eq p and e[2] eq eps][1];
+      pts := Points(J1, KummerSurface(J1)!k);
+      assert #pts gt 0 and Order(pts[1]) eq 0;
     else
       rb := RankBound(J);
       if rb ne 0 then
@@ -280,7 +340,8 @@ printf "2-descent rank bound is positive, and rank 0 follows from Table 2 (p is 
 for e in rank_by_table2 do
   printf "  p = %o = m^2 %o 108: rank bound %o\n", e[1], e[2] eq 1 select "+" else "-", e[3];
 end for;
-printf "In particular, none of the curves with p = m^2 + 108 has positive rank.\n\n";
+printf "In particular, among the curves with p = m^2 + 108, only the one for\n";
+printf "p = 151429 = 389^2 + 108 has a Jacobian of positive rank.\n\n";
 
 printf "\n=============================================================================\n";
 printf "3. Proposition 6.5\n";
@@ -424,11 +485,14 @@ assert RankBound(J0) eq 0 and Invariants(TorsionSubgroup(J0)) eq [19];
 assert Order(J0![x^2, 1 - 2*x]) eq 19;
 printf "For w = -1, 0, X_p is X_1(13), with J(Q) = Z/19.\n";
 
-// The primes p for w = 1, ..., 14
-ws := [w0 : w0 in [1..14] | IsPrime(Evaluate(pZ, w0))];
-assert ws eq [1, 2, 3, 4, 8, 9, 10, 11, 14];
-assert [Integers()!Evaluate(pZ, w0) : w0 in ws] eq [61, 181, 421, 853, 6781, 10093, 14533, 20341, 48733];
-assert forall{w0 : w0 in ws | Integers()!Evaluate(pZ, w0) in boldface};
-printf "For w <= 14, Proposition 6.5 gives the primes %o.\n", [Integers()!Evaluate(pZ, w0) : w0 in ws];
+// The primes p for w = 1, ..., 21: p increases with w, w <= 20 gives p < 2*10^5,
+// and w = 21 gives the next prime, just beyond Table 2.
+assert Evaluate(pZ, 20) lt 2*10^5 and Evaluate(pZ, 21) gt 2*10^5;
+ws := [w0 : w0 in [1..21] | IsPrime(Evaluate(pZ, w0))];
+assert ws eq [1, 2, 3, 4, 8, 9, 10, 11, 14, 21];
+assert [Integers()!Evaluate(pZ, w0) : w0 in ws] eq [61, 181, 421, 853, 6781, 10093, 14533, 20341, 48733, 223621];
+assert forall{w0 : w0 in ws | w0 eq 21 or Integers()!Evaluate(pZ, w0) in boldface};
+printf "For w <= 20, Proposition 6.5 gives the primes %o;\n", [Integers()!Evaluate(pZ, w0) : w0 in ws | w0 le 20];
+printf "the next one is p = %o for w = 21.\n", Evaluate(pZ, 21);
 
 printf "\nAll claims in Section 6 verified. Total time: %o seconds.\n", Cputime(t0);

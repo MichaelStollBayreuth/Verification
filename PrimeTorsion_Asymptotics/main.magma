@@ -11,7 +11,7 @@
   Written for Magma V2.29 by Claude Code (Fable 5.1).
 
   This file runs section6.magma and section8.magma, which verify the claims
-  in Sections 6 and 8 (about 25 seconds and about one hour, respectively;
+  in Sections 6 and 8 (about one minute and about one hour, respectively;
   section8.magma needs up to 18 GB of memory), and then checks Table 2
   (the strange primes and their strange characters, Section 5) for all
   primes p <= B with the code in strange_primes.magma. The bound B and the
