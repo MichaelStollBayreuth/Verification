@@ -15,11 +15,12 @@ for verifying computational assertions in some of my papers.
 
 * [strange_primes.magma](PrimeTorsion_Asymptotics/strange_primes.magma):
   this contains the code that determines the strange primes and characters
-  (Section 5, Table 2); it is loaded by the other files. Checking the complete
-  Table 2 (all primes below 100000) takes about 20 CPU days.
+  (Section 5, Table 2); it is loaded by the other files. Checking Table 2 for
+  all primes below 100000 takes about 20 CPU days; its extension to 200000 was
+  computed with the leaner screening (about 150 CPU days).
 
 * [section6.magma](PrimeTorsion_Asymptotics/section6.magma):
-  this checks the computations in Section 6 (about half a minute).
+  this checks the computations in Section 6 (about one minute).
 
 * [section8.magma](PrimeTorsion_Asymptotics/section8.magma):
   this checks the computations in Section 8 (about one hour; needs 18 GB of memory).
@@ -31,6 +32,13 @@ for verifying computational assertions in some of my papers.
   process per prime run by GNU parallel, using the leaner screening
   in strange_primes.magma (whose header explains how to run them and
   what the search costs).
+
+* [search_pair.m](PrimeTorsion_Asymptotics/search_pair.m),
+  [cluster/](PrimeTorsion_Asymptotics/cluster/):
+  the search beyond 200000, one Magma process per pair (prime, character
+  order), which needs much less memory per process; the scripts in cluster/
+  run it on a SLURM cluster with a shared queue that can grow while the
+  search runs (see [cluster/README.md](PrimeTorsion_Asymptotics/cluster/README.md)).
 
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),

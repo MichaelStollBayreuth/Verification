@@ -162,6 +162,25 @@
   (a Magma process slows down considerably over days); see search_prime.m
   and run_search.sh.
 
+  The search beyond 2 * 10^5 runs one Magma process per character
+  (search_pair.m, for a pair (p, n); the scripts in the directory cluster/
+  run it on a cluster). Two further savings apply there. (1) Memory: most of
+  the memory of a process is held by the modular symbols space M, but the
+  first trial (T = T_2), which takes most of the time and certifies almost
+  all characters, needs only the sparse matrix of T_2 and the winding
+  element. lean_setup computes these, and search_pair.m calls it as a
+  top-level statement of its own, because Magma frees the memory of the
+  local variables of a function only when the top-level statement that
+  called it has finished; M is rebuilt only for the few characters that the
+  first trial does not certify. With this, a process needs about 2 GB
+  instead of 10 GB at p near 2 * 10^5 after a setup phase of about 45
+  seconds (with a short peak of about 13 GB). (2) The auxiliary prime: only
+  the values of the one character need to lie in F_q, so q = 1 mod n
+  suffices (aux_prime_order), which keeps q below 2^23.5, the range of fast
+  arithmetic, also where no q = 1 mod (p - 1) below 2^23.5 exists (for 26 of
+  the 8013 primes between 2 * 10^5 and 3 * 10^5, and for more than half of
+  them near 2 * 10^6).
+
   ---------------------------------------------------------------------------
   Usage (B is the upper bound for the range of primes)
   ---------------------------------------------------------------------------
@@ -192,6 +211,7 @@
 
     strange_orders_lean(8713); // as strange_orders, with the lean screening
     strange_orders_lean(8713 : candidates := "record"); // candidate data by screen_character
+    screen_order_lean(8713, 12); // the lean screening of the character of order 12 alone
 
   ---------------------------------------------------------------------------
   Searching beyond 10^5 with GNU parallel
@@ -285,6 +305,24 @@ function aux_prime(p)
   m := p - 1;
   q := (Q_MIN div m)*m + 1;
   repeat q +:= m; until IsPrime(q);
+  return q;
+end function;
+
+// The auxiliary prime for a single character of order n (lean search, one job
+// per character): only the values of this character need to lie in F_q, so
+// q = 1 mod n suffices, which keeps q in the range of fast arithmetic
+// (q < 2^23.5) far more often than q = 1 mod (p - 1) for large p. It is the
+// smallest prime q > Q_MIN with q = 1 mod n; if that exceeds 2^23.5 (possible
+// only for large n), the largest one below Q_MIN, provided it exceeds 2^20.
+function aux_prime_order(n)
+  m := IsOdd(n) select 2*n else n; // q is odd
+  q := (Q_MIN div m)*m + 1;
+  repeat q +:= m; until IsPrime(q);
+  if q^2 gt 2^47 then
+    q1 := (Q_MIN div m)*m + 1;
+    while q1 gt 2^20 and not IsPrime(q1) do q1 -:= m; end while;
+    if q1 gt 2^20 then q := q1; end if;
+  end if;
   return q;
 end function;
 
@@ -605,10 +643,30 @@ function lean_candidate(M, V, ops, e1, dS, chi, z : mW2 := false)
   return false;
 end function;
 
+// The data for the first trial of screen_character_lean, as a tuple: the
+// dimension of M, the matrix of T_2 (sparse) and the coordinates of the winding
+// element {0, oo} (Eltseq gives the same coordinates as VectorSpace(M), which is
+// not needed here). The first trial takes most of the time and certifies almost
+// all characters, and it does not need M. But Magma frees the memory of the
+// local variables of a function (here M, most of it the data for expressing
+// Manin symbols in the basis of M: several GB for p near 2 * 10^5) only when the
+// top-level statement that called the function has finished (measured: M is
+// still in memory after lean_setup has returned to another function). So the
+// memory saving needs a top-level statement
+//   setup := lean_setup(chi);
+// before screen_character_lean(chi : setup := setup) (see search_pair.m); then
+// the first trial runs in a small fraction of the memory.
+function lean_setup(chi)
+  M := ModularSymbols(chi, 2, +1);
+  assert Rank(BoundaryMap(M)) eq 2; // see screen_character_lean
+  return <Dimension(M), sparse_hecke_lean(M, 2), Eltseq(M!<1, [Cusps()| 0, Infinity()]>)>;
+end function;
+
 // Same input and output as screen_character. With candidates := "record",
 // the candidate data of a character that cannot be certified are computed by
-// screen_character instead of lean_candidate.
-function screen_character_lean(chi : trials := 4, candidates := "lean")
+// screen_character instead of lean_candidate. setup: the result of
+// lean_setup(chi), if computed beforehand (see there).
+function screen_character_lean(chi : trials := 4, candidates := "lean", setup := false)
   assert candidates in {"lean", "record"};
   t0 := Cputime();
   p := Modulus(chi);
@@ -616,6 +674,24 @@ function screen_character_lean(chi : trials := 4, candidates := "lean")
   Fq := BaseRing(chi);
   PF := PolynomialRing(Fq);
   z := chi(PrimitiveRoot(p));
+  // Trial 1 (T = T_2, see below), without M if possible (see lean_setup).
+  if setup cmpeq false then setup := lean_setup(chi); end if;
+  dimM, T, e := Explode(setup);
+  dS := dimM - 2;
+  if dS le 0 then return <0, 2, PF!1, z>; end if;
+  V := VectorSpace(Fq, dimM);
+  e1 := eisenstein_killer(V!e, T, 2, chi(2));
+  mW2 := false; // the minimal polynomial of T_2 on F_q[T_2] e' (from trial 1)
+  if not IsZero(e1) then
+    target := (n eq 2 and chi(2) eq 1) select dS div 2 else dS; // see "doubled" below
+    m := krylov_minpoly(e1, T, target, V, Fq, PF);
+    vprintf User2: "    order %o: dim S = %o, linear complexity %o of %o (trial 1, %o s)\n",
+                   n, dS, Degree(m), target, Cputime(t0);
+    if Degree(m) eq target then return <0, 2, PF!1, z>; end if;
+    mW2 := m;
+  end if;
+  delete T, e, e1, V;
+  // Not certified by trial 1: the other trials and the candidate data, with M.
   M := ModularSymbols(chi, 2, +1);
   // dim S = dim M - 2: the boundary space is spanned by the cusps 0 and oo
   // (neither is killed by the even character chi), and the boundary map is
@@ -642,8 +718,8 @@ function screen_character_lean(chi : trials := 4, candidates := "lean")
   // smaller value can also be due to an unlucky choice, hence the trials).
   // Otherwise the original code decides (and produces the candidate data).
   lseq := [l : l in PrimesUpTo(L_MAX) | l gt 2 and l ne p];
-  mW2 := false; // the minimal polynomial of T_2 on F_q[T_2] e' (from trial 1)
   for trial in [1..Min(trials, #lseq + 1)] do
+    if trial eq 1 and mW2 cmpne false then continue; end if; // done above
     if trial eq 1 then
       T := ops[2];
     else
@@ -680,23 +756,45 @@ function screen_character_lean(chi : trials := 4, candidates := "lean")
   return screen_character(chi);
 end function;
 
+// The even character of order n mod p (n > 1 dividing (p-1)/2) with values in
+// F_q, q = aux_prime_order(n). (DirichletGroup(p, F_q) is cyclic of order
+// gcd(p - 1, q - 1), which n divides.)
+function order_character(p, n)
+  assert IsPrime(p) and p gt 3 and n gt 1 and IsDivisibleBy(ExactQuotient(p-1, 2), n);
+  G := DirichletGroup(p, GF(aux_prime_order(n)));
+  chi := G.1^ExactQuotient(#G, n);
+  assert Order(chi) eq n and IsEven(chi);
+  return chi;
+end function;
+
+// The candidates (none or one, as in screen_prime) from the result of
+// screen_character_lean(chi).
+function candidate_list(chi, res)
+  d, l, kerpol, z := Explode(res);
+  if d eq 0 then return []; end if;
+  return [<Modulus(chi), Order(chi), #BaseRing(chi), Integers()!z, d, l,
+           [Integers()!c : c in Coefficients(kerpol)]>];
+end function;
+
+// The lean screening of the even character of order n mod p alone (n > 1
+// dividing (p-1)/2), so that the work for a prime can be split into one job
+// per order (see search_pair.m). Returns the sequence of candidates for this
+// order, as in screen_prime: empty if chi is certified to be not strange,
+// otherwise one tuple <p, n, q, z, d, l, coeffs>.
+function screen_order_lean(p, n : candidates := "lean")
+  chi := order_character(p, n);
+  return candidate_list(chi, screen_character_lean(chi : candidates := candidates));
+end function;
+
 // Same as screen_prime, with the lean screening (candidates as in
 // screen_character_lean).
 function screen_prime_lean(p : candidates := "lean")
   assert IsPrime(p);
   if p le 3 then return []; end if;
   t0 := Cputime();
-  q := aux_prime(p);
-  Fq := GF(q);
-  G := DirichletGroup(p, Fq);
   cands := [];
   for n in [n : n in Divisors(ExactQuotient(p-1, 2)) | n gt 1] do
-    chi := G.1^ExactQuotient(#G, n);
-    d, l, kerpol, z := Explode(screen_character_lean(chi : candidates := candidates));
-    if d gt 0 then
-      Append(~cands, <p, n, q, Integers()!z, d, l,
-                      [Integers()!c : c in Coefficients(kerpol)]>);
-    end if;
+    cands cat:= screen_order_lean(p, n : candidates := candidates);
   end for;
   vprintf User1: "  p = %o: %o candidate(s) (%o s)\n", p, #cands, Cputime(t0);
   return cands;

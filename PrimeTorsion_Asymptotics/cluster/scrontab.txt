@@ -1,0 +1,8 @@
+# scrontab for the strange-prime search: every 30 minutes, keep the number of
+# worker jobs given in queue/workers_target (install with: scrontab cluster/scrontab.txt)
+#SCRON -p normal
+#SCRON -t 5:00
+#SCRON -n 1
+#SCRON -J strange-keeper
+#SCRON -o /dev/null
+*/30 * * * * cd ~/strange-search && cluster/keep_workers.sh >> queue/logs/keeper.log 2>&1

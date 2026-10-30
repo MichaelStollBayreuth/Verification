@@ -1,0 +1,2 @@
+{"reserve_gb": 4.0, "kill_below_gb": 2.5, "delay_s": 8, "time_a": 235.0, "time_exp": 1.75,
+ "peak_a": 12.6, "steady_a": 2.0, "mem_b": 0.0, "peak_s": 45, "peak_exp": 2.0, "young_frac": 0.6}
