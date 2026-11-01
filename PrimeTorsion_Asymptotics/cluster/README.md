@@ -38,14 +38,19 @@ python3 cluster/audit.py --queue queue --results results.txt   # completeness ch
 `scrontab cluster/scrontab.txt` runs `keep_workers.sh` every 30 minutes, with the
 number of workers taken from `queue/workers_target`; since such a job can wait
 long on a full cluster, each worker also runs `keep_workers.sh` when it ends
-regularly.
+regularly, and the regular workers (job name `strange-worker`) run it every
+`keeper_s` seconds (config, default 1800) unless someone else has run it in the
+meantime (`queue/keeper.last` is touched at each run).
 
 `keep_workers.sh` also fills idle nodes with one-off extra workers (job name
 `strange-extra`; they are not replaced when they end), up to `queue/max_jobs`
 worker jobs in all and leaving `queue/idle_reserve` idle nodes (default 10) for
-others, preferring the nodes with 250 GB. It does so only while no job of another
-user and none of ours is pending in the partition. Without `queue/max_jobs` there
-are no extra workers. `DRY=1 cluster/keep_workers.sh` shows what it would submit.
+others, preferring the nodes with 250 GB. It does so only while none of our
+worker jobs is pending and our keeper job is not pending with reason `Priority`.
+(The jobs of other users are invisible on lipwig, `PrivateData=jobs`; a keeper
+job waiting for `Priority` is the visible sign that jobs of higher priority are
+waiting.) Without `queue/max_jobs` there are no extra workers.
+`DRY=1 cluster/keep_workers.sh` shows what it would submit.
 
 The queue can be extended at any time with `enqueue.py` (a new range of primes,
 or `--pairs FILE` with lines `p n`); workers that are running pick up the new

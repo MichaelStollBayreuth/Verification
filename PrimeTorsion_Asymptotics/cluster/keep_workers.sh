@@ -6,8 +6,11 @@
 # Then fill idle nodes with one-off extra workers (job name strange-extra, not
 # replaced when they end), up to queue/max_jobs worker jobs in all (default 0:
 # no extra workers), leaving queue/idle_reserve idle nodes (default 10) for
-# others; only while no job of another user and none of ours is pending.
+# others; only while none of our worker jobs is pending and our keeper job is
+# not pending with reason Priority (other users' jobs are invisible on lipwig).
 # DRY=1 only prints what would be submitted; MAX_JOBS and IDLE_RESERVE override the files.
+# KEEPER_MIN_AGE=s (set by the workers' periodic call): do nothing if the script
+# has run in the last s seconds (queue/keeper.last).
 cd ~/strange-search || exit 1
 # one run at a time (the extra workers end at about the same time); a lock older
 # than 10 minutes is stale
@@ -16,6 +19,11 @@ if ! mkdir "$lock" 2>/dev/null; then
   [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] && rmdir "$lock" 2>/dev/null && mkdir "$lock" 2>/dev/null || exit 0
 fi
 trap 'rmdir "$lock" 2>/dev/null' EXIT
+if [ -n "$KEEPER_MIN_AGE" ] && [ -f queue/keeper.last ] &&
+   [ $(($(date +%s) - $(stat -c %Y queue/keeper.last))) -lt "$KEEPER_MIN_AGE" ]; then
+  exit 0
+fi
+[ -n "$DRY" ] || touch queue/keeper.last
 N=${1:-$(cat queue/workers_target 2>/dev/null || echo 10)}
 M=${MAX_JOBS:-$(cat queue/max_jobs 2>/dev/null || echo 0)}
 R=${IDLE_RESERVE:-$(cat queue/idle_reserve 2>/dev/null || echo 10)}
@@ -28,8 +36,9 @@ if [ "$(size queue/pairs.txt)" -le "$(pos queue/pairs.pos)" ] &&
    [ "$(size queue/requeue.txt)" -le "$(pos queue/requeue.pos)" ]; then
   exit 0  # nothing left to hand out
 fi
-# (a worker calling this at its end does not count itself)
-count() { squeue --me -h -n "$1" -t PENDING,CONFIGURING,RUNNING -o %i | grep -v -x "${SLURM_JOB_ID:-none}" | wc -l; }
+# (a worker calling this at its end does not count itself; its periodic call does)
+self=${SLURM_JOB_ID:-none}; [ -n "$KEEPER_MIN_AGE" ] && self=none
+count() { squeue --me -h -n "$1" -t PENDING,CONFIGURING,RUNNING -o %i | grep -v -x "$self" | wc -l; }
 have=$(count strange-worker)
 for ((i = have; i < N; i++)); do
   echo "$(date '+%F %T') $have of $N workers; submitted job $(submit)"
@@ -38,8 +47,10 @@ done
 # extra workers on idle nodes
 ours=$(count strange-worker,strange-extra)
 [ "$ours" -lt "$M" ] || exit 0
-[ "$(squeue -h -p normal -t PENDING -o %u | grep -v -x "$USER" | wc -l)" -eq 0 ] || exit 0
 [ "$(squeue --me -h -n strange-worker,strange-extra -t PENDING -o %i | wc -l)" -eq 0 ] || exit 0
+# squeue shows only our own jobs (PrivateData=jobs); our keeper job pending with
+# reason Priority means that jobs of higher priority are waiting
+[ "$(squeue --me -h -n strange-keeper -t PENDING -o %r | grep -c -x Priority)" -eq 0 ] || exit 0
 nodes=$(sinfo -h -p normal -N -o "%n %f %T" | sort -u | grep -v '^r12g' | awk '$3 == "idle" || $3 == "idle~"')
 big=$(grep -c 'EPYC-7352' <<< "$nodes")
 std=$(grep -c 'EPYC-7302' <<< "$nodes")

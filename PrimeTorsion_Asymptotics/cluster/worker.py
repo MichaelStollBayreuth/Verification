@@ -46,6 +46,7 @@ DEFAULTS = dict(
     max_attempts=4,       # irregular ends of a task before it is given up (failed/)
     stale_s=1800,         # a running/ entry not touched for this long is dead
     heartbeat_s=300, janitor_s=600, config_s=60, memlog_s=300, loop_s=5,
+    keeper_s=1800,        # regular workers run keep_workers.sh if nobody has for this long (0: never)
     stop=False,           # true: no worker starts new tasks
 )
 
@@ -95,7 +96,9 @@ class Worker:
         self.draining = False    # no new tasks (end of the job is near, or stop)
         self.terminate = False
         self.failures = []       # times of recent failures (circuit breaker)
-        self.t_heartbeat = self.t_janitor = self.t_memlog = time.time()
+        self.regular = os.environ.get("SLURM_JOB_NAME") == "strange-worker"
+        self.keeper_proc = None  # periodic keep_workers.sh, running in the background
+        self.t_heartbeat = self.t_janitor = self.t_memlog = self.t_keeper = time.time()
         signal.signal(signal.SIGUSR1, self.on_usr1)
         signal.signal(signal.SIGTERM, self.on_term)
         signal.signal(signal.SIGINT, self.on_term)
@@ -496,14 +499,63 @@ class Worker:
         of its own it may wait long on a full cluster.)"""
         if not self.slurm or self.empty or self.cfg["stop"] or self.breaker():
             return
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keep_workers.sh")
+        self.keeper_wait()  # (its lock would make the call below do nothing)
         try:
-            r = subprocess.run([script], capture_output=True, text=True, timeout=120)
-            with open(sq.qpath(self.Q, "logs", "keeper.log"), "a") as f:
-                f.write(r.stdout)
-            self.log("keep_workers.sh: %s" % (r.stdout.strip().replace("\n", "; ") or "nothing submitted"))
+            r = subprocess.run([self.keeper_script()], capture_output=True, text=True, timeout=120)
+            self.keeper_output(r.stdout)
         except Exception as e:
             self.log("keep_workers.sh failed: %s" % e)
+
+    def keeper_script(self):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "keep_workers.sh")
+
+    def keeper_output(self, out):
+        with open(sq.qpath(self.Q, "logs", "keeper.log"), "a") as f:
+            f.write(out)
+        self.log("keep_workers.sh: %s" % (out.strip().replace("\n", "; ") or "nothing submitted"))
+
+    def keeper_tick(self, now):
+        """Every minute: a regular worker starts keep_workers.sh in the
+        background if nobody has run it for keeper_s seconds (the scrontab
+        keeper may wait for a node for hours on a full cluster); the script
+        checks queue/keeper.last again under its lock."""
+        if self.keeper_proc is not None:
+            if self.keeper_proc.poll() is not None:
+                self.keeper_output(self.keeper_proc.communicate()[0])
+                self.keeper_proc = None
+            elif now - self.t_keeper > 120:
+                self.log("keep_workers.sh still running after 120 s; killing it")
+                self.keeper_proc.kill()
+                self.keeper_proc.communicate()
+                self.keeper_proc = None
+            return
+        ks = self.cfg["keeper_s"]
+        if not (self.slurm and self.regular and ks) or now - self.t_keeper < 60:
+            return
+        if self.empty or self.draining or self.cfg["stop"]:
+            return
+        self.t_keeper = now
+        try:
+            age = now - os.stat(sq.qpath(self.Q, "keeper.last")).st_mtime
+        except FileNotFoundError:
+            age = ks
+        if age < ks:
+            return
+        try:
+            self.keeper_proc = subprocess.Popen([self.keeper_script()], stdin=subprocess.DEVNULL,
+                                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                                env=dict(os.environ, KEEPER_MIN_AGE=str(int(ks - 60))))
+        except Exception as e:
+            self.log("keep_workers.sh failed: %s" % e)
+
+    def keeper_wait(self):
+        if self.keeper_proc is not None:
+            try:
+                self.keeper_output(self.keeper_proc.communicate(timeout=120)[0])
+            except subprocess.TimeoutExpired:
+                self.keeper_proc.kill()
+                self.keeper_proc.communicate()
+            self.keeper_proc = None
 
     # ---------------------------------------------------------------- main loop
     def run(self):
@@ -530,6 +582,7 @@ class Worker:
             if now - self.t_memlog > self.cfg["memlog_s"]:
                 self.memlog()
                 self.t_memlog = now
+            self.keeper_tick(now)
             self.memory_guard()
             self.maybe_start()
             if not self.children and self.held is None and (self.empty or self.draining or self.cfg["stop"]):
