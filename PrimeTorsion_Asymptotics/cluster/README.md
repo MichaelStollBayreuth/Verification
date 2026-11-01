@@ -40,6 +40,13 @@ number of workers taken from `queue/workers_target`; since such a job can wait
 long on a full cluster, each worker also runs `keep_workers.sh` when it ends
 regularly.
 
+`keep_workers.sh` also fills idle nodes with one-off extra workers (job name
+`strange-extra`; they are not replaced when they end), up to `queue/max_jobs`
+worker jobs in all and leaving `queue/idle_reserve` idle nodes (default 10) for
+others, preferring the nodes with 250 GB. It does so only while no job of another
+user and none of ours is pending in the partition. Without `queue/max_jobs` there
+are no extra workers. `DRY=1 cluster/keep_workers.sh` shows what it would submit.
+
 The queue can be extended at any time with `enqueue.py` (a new range of primes,
 or `--pairs FILE` with lines `p n`); workers that are running pick up the new
 tasks. To stop all workers from taking new tasks, set `"stop": true` in
