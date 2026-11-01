@@ -37,7 +37,10 @@ DEFAULTS = dict(
     # about 45 %), the new task with its full peak.
     peak_a=12.6, steady_a=2.0, mem_b=0.0, mem_exp=2.0, peak_s=45, peak_exp=2.0, young_frac=0.6,
     time_a=235.0, time_exp=1.75,             # predicted run time (s): time_a (p/2e5)^time_exp
-    verify_mem_factor=1.6, verify_time_factor=3.0,
+    # A verification (task with a candidate) takes 12-20 times the predicted screening
+    # time (measured on lipwig for 2.0e5 < p < 2.8e5), and its peak is about 1.25 times
+    # the predicted screening peak.
+    verify_mem_factor=1.6, verify_time_factor=20.0,
     time_safety=1.5,      # start a task only if time_safety * predicted time fits
     end_margin_s=300,     # ... before the end of the job minus this margin
     max_attempts=4,       # irregular ends of a task before it is given up (failed/)
@@ -85,6 +88,7 @@ class Worker:
         self.read_config()
         self.children = []       # dicts: task, name, proc, start, pmem, ptime, killed, hwm
         self.held = None         # claimed task waiting for memory
+        self.alone_note = None   # task logged as "too big for the model: run alone"
         self.empty = False       # the queue was empty at the last claim
         self.last_claim_try = 0
         self.last_start = 0
@@ -295,7 +299,18 @@ class Worker:
                         if now - c["start"] < self.peak_window(c["task"]) else self.pred_mem(c["task"])
                         for c in self.children if not c["killed"])
         need = self.pred_mem(t, True)
-        return committed + need <= total - self.cfg["reserve_gb"] and avail - need >= self.cfg["reserve_gb"] / 2
+        cap = total - self.cfg["reserve_gb"]
+        if need > cap:
+            # By the model the task never fits on this node (verifications from
+            # about 4.9e5 on, on a 128 GB node; the model overestimates their
+            # peak by about 25 %). Run it alone: wait until no other task runs.
+            name = sq.name_of(t["p"], t["n"])
+            if self.alone_note != name:
+                self.alone_note = name
+                self.log("%s: predicted peak %.0f GiB exceeds this node (%.0f GiB); "
+                         "running it alone when the other tasks have ended" % (name, need, cap))
+            return not any(not c["killed"] for c in self.children)
+        return committed + need <= cap and avail - need >= self.cfg["reserve_gb"] / 2
 
     def time_ok(self, t):
         return time.time() + self.cfg["time_safety"] * self.pred_time(t) <= self.end - self.cfg["end_margin_s"]

@@ -98,7 +98,9 @@ the node's memory minus `reserve_gb`; at most `max_procs` tasks (default: one
 per CPU), at most one start per `delay_s` seconds, and only if `time_safety`
 times the predicted time `time_a (p/200000)^time_exp` seconds fits before the
 end of the job. Verification tasks count with `verify_mem_factor` and
-`verify_time_factor`. Capacity of a node with 128 GB: about 30 tasks at
+`verify_time_factor`. A task whose predicted peak exceeds the memory of the node
+(from about p = 4.9·10^5 on for verifications on a node with 128 GB) is run alone:
+the worker starts no other task until all its running tasks have ended. Capacity of a node with 128 GB: about 30 tasks at
 p = 2.1·10^5, 18 at 2.5·10^5, 12 at 3·10^5 (memory, not the 32 cores, is the
 limit beyond about 2.2·10^5).
 
