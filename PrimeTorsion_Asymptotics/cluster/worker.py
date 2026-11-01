@@ -196,17 +196,18 @@ class Worker:
                     self.children[-1]["pmem"], self.children[-1]["ptime"]))
 
     def give_back(self, t, why, irregular):
-        """Requeue task t (after an irregular end if irregular is true: then
-        its attempts are counted, and a screening task whose candidate was
-        already printed becomes a verification task)."""
+        """Requeue task t. A screening task whose candidate was already printed
+        becomes a verification task (also at the end of the job, so that the
+        screening is not repeated and the task is scheduled with the time of a
+        verification); after an irregular end (irregular true) its attempts are
+        counted."""
         t = dict(t)
-        outp = self.out_path(t)
+        if t["kind"] == "S":
+            cand = sq.candidate_from_output(self.out_path(t))
+            if cand:
+                t["kind"], t["cand"] = "V", cand
         if irregular:
             t["attempts"] += 1
-            if t["kind"] == "S":
-                cand = sq.candidate_from_output(outp)
-                if cand:
-                    t["kind"], t["cand"] = "V", cand
             if t["attempts"] >= self.cfg["max_attempts"]:
                 self.fail(t, "gave up after %d irregular ends (last: %s)" % (t["attempts"], why))
                 return
@@ -458,10 +459,19 @@ class Worker:
 
     def drain(self):
         """Near the end of the job: kill (and requeue) the tasks that cannot
-        finish in time."""
+        finish in time. A screening task that has found a candidate is busy
+        with the verification: it is predicted with screening + verification
+        time (and requeued as a verification task, see give_back)."""
         left = self.end - time.time()
         for c in self.children:
-            if not c["killed"] and c["ptime"] * 1.2 - (time.time() - c["start"]) > left - 60:
+            if c["killed"]:
+                continue
+            t = c["task"]
+            if t["kind"] == "S" and not c.get("cand") and sq.candidate_from_output(self.out_path(t)):
+                c["cand"] = True
+                c["ptime"] = self.pred_time(t) + self.pred_time(dict(t, kind="V"))
+                self.log("%s is verifying a candidate (predicted %.0f s in all)" % (c["name"], c["ptime"]))
+            if c["ptime"] * 1.2 - (time.time() - c["start"]) > left - 60:
                 self.kill(c, "end of the job")
 
     def shutdown(self, why):
