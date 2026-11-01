@@ -67,6 +67,11 @@ tasks. To stop all workers from taking new tasks, set `"stop": true` in
 
 The pointers and `requeue.txt` are only changed under a lock (the directory
 `queue/lock`, created with `mkdir`, which is atomic on the shared file system).
+A lock older than two minutes is broken. The PanFS client of a node can keep
+an entry `queue/lock` that no longer exists on the server (`mkdir` then fails,
+`rmdir` finds nothing, and the worker would wait for hours); a worker detects
+this and makes the client drop the entry by renaming a directory onto it (see
+`sq.Lock`).
 
 ## Tasks that do not finish regularly
 

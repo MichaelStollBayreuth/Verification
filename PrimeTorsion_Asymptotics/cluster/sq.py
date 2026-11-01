@@ -47,28 +47,68 @@ def done_path(Q, p, n):
 
 class Lock:
     """Mutual exclusion via mkdir. A lock older than `stale` seconds is
-    assumed to belong to a dead process and is broken."""
+    assumed to belong to a dead process and is broken.
+
+    The PanFS client of a node can keep a directory entry that no longer
+    exists on the server (2026-11-01: r12n11 for 2.6 hours, r12n02): stat
+    finds the old lock, mkdir fails with EEXIST and rmdir with ENOENT, while
+    the other nodes see no lock. A rename onto the entry fails with ENOENT as
+    well, but makes the client drop it (tested on r12n02). So when a broken
+    lock is still there with the same inode and mtime, drop_stale_entry
+    renames a directory onto it, at most every 10 seconds."""
 
     def __init__(self, Q, stale=120, log=None):
         self.path = qpath(Q, "lock")
         self.stale = stale
         self.log = log
 
+    def owner_line(self):
+        return "%s %d %d\n" % (HOST, os.getpid(), int(time.time()))
+
+    def drop_stale_entry(self):
+        """Rename a directory with an owner file onto the lock path. A lock
+        held by a live process has its owner file (from right after its
+        mkdir), so the rename does not replace it (rename onto a non-empty
+        directory fails); if the rename succeeds, the lock is ours."""
+        tmp = "%s.tmp.%s.%d" % (self.path, HOST, os.getpid())
+        try:
+            os.mkdir(tmp)
+            with open(os.path.join(tmp, "owner"), "w") as f:
+                f.write(self.owner_line())
+            os.rename(tmp, self.path)
+            return True
+        except OSError as e:
+            shutil.rmtree(tmp, ignore_errors=True)
+            if self.log:
+                self.log("lock entry not removable; rename onto it: %s" % e.strerror)
+            return False
+
     def __enter__(self):
+        broken = None     # (inode, mtime) of the last lock broken
+        logged = None     # the last lock reported in the log
+        tried = 0         # time of the last drop_stale_entry
         while True:
             try:
                 os.mkdir(self.path)
                 with open(os.path.join(self.path, "owner"), "w") as f:
-                    f.write("%s %d %d\n" % (HOST, os.getpid(), int(time.time())))
+                    f.write(self.owner_line())
                 return self
             except FileExistsError:
                 try:
-                    age = time.time() - os.stat(self.path).st_mtime
+                    st = os.stat(self.path)
                 except FileNotFoundError:
                     continue
+                age = time.time() - st.st_mtime
                 if age > self.stale:
+                    key = (st.st_ino, st.st_mtime)
+                    if key == broken and time.time() - tried >= 10:
+                        tried = time.time()
+                        if self.drop_stale_entry():
+                            return self
                     shutil.rmtree(self.path, ignore_errors=True)
-                    if self.log:
+                    broken = key
+                    if self.log and key != logged:
+                        logged = key
                         self.log("broke a stale lock (age %d s)" % age)
                 time.sleep(0.05 + 0.1 * random.random())
 
