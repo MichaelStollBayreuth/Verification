@@ -97,6 +97,11 @@ this and makes the client drop the entry by renaming a directory onto it (see
   node with more memory); so does a task whose Magma run fails (error, or an
   unconfirmed candidate). After three failures in a row a worker stops taking
   tasks, so that a systematic problem cannot empty the queue.
+- An exception in the worker itself (e.g. a file system error) is logged
+  (`ERROR in ...`, at most once a minute per step) and the worker carries on;
+  a task it loses track of is requeued by a janitor once its `running/` entry
+  is stale. `keep_workers.sh` does nothing if `squeue` or `sinfo` fails (on
+  lipwig's login node they sometimes fail for a while: DNS).
 - `audit.py` checks that every pair in `pairs.txt` has a result in `done/`, and
   lists pairs that are neither done, running, waiting nor failed (`--requeue`
   puts them back).

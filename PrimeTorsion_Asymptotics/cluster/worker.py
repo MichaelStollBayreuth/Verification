@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sq  # noqa: E402
@@ -98,6 +99,7 @@ class Worker:
         self.failures = []       # times of recent failures (circuit breaker)
         self.regular = os.environ.get("SLURM_JOB_NAME") == "strange-worker"
         self.keeper_proc = None  # periodic keep_workers.sh, running in the background
+        self.err_logged = {}     # step -> time of the last logged exception (safely)
         self.t_heartbeat = self.t_janitor = self.t_memlog = self.t_keeper = time.time()
         signal.signal(signal.SIGUSR1, self.on_usr1)
         signal.signal(signal.SIGTERM, self.on_term)
@@ -109,8 +111,26 @@ class Worker:
 
     # ---------------------------------------------------------------- utilities
     def log(self, msg):
-        self.logf.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg))
-        self.logf.flush()
+        try:
+            self.logf.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg))
+            self.logf.flush()
+        except OSError:
+            pass
+
+    def safely(self, step, *args):
+        """Run one step of the main loop; an exception (e.g. a file system
+        error on PanFS, which ended two workers on 2026-11-02 in the janitor)
+        is logged, at most once a minute per step, instead of ending the
+        worker. A task lost track of that way is requeued by a janitor once
+        its running/ entry is stale."""
+        try:
+            return step(*args)
+        except Exception:
+            name = step.__name__
+            if time.time() - self.err_logged.get(name, 0) > 60:
+                self.err_logged[name] = time.time()
+                self.log("ERROR in %s (the worker continues): %s"
+                         % (name, traceback.format_exc().strip().replace("\n", " | ")))
 
     def job_end(self, hours):
         if self.slurm:
@@ -416,7 +436,7 @@ class Worker:
                     head, line = f.read().split("\n")[:2]
                 jobid, host, pid = head.split()[:3]
                 age = time.time() - e.stat().st_mtime
-            except (FileNotFoundError, ValueError):
+            except (OSError, ValueError):  # (gone meanwhile, or a file system error)
                 continue
             if jobid == self.jobid:
                 continue
@@ -559,12 +579,12 @@ class Worker:
 
     # ---------------------------------------------------------------- main loop
     def run(self):
-        self.janitor()
+        self.safely(self.janitor)
         while True:
             now = time.time()
             if now - self.cfg_time > self.cfg["config_s"]:
-                self.read_config()
-            self.reap()
+                self.safely(self.read_config)
+            self.safely(self.reap)
             if self.terminate:
                 self.shutdown("terminated by a signal")
                 break
@@ -572,19 +592,19 @@ class Worker:
                 self.log("end of the job is near; draining")
                 self.draining = True
             if self.draining:
-                self.drain()
+                self.safely(self.drain)
             if now - self.t_heartbeat > self.cfg["heartbeat_s"]:
-                self.heartbeat()
+                self.safely(self.heartbeat)
                 self.t_heartbeat = now
             if now - self.t_janitor > self.cfg["janitor_s"]:
-                self.janitor()
+                self.safely(self.janitor)
                 self.t_janitor = now
             if now - self.t_memlog > self.cfg["memlog_s"]:
-                self.memlog()
+                self.safely(self.memlog)
                 self.t_memlog = now
-            self.keeper_tick(now)
-            self.memory_guard()
-            self.maybe_start()
+            self.safely(self.keeper_tick, now)
+            self.safely(self.memory_guard)
+            self.safely(self.maybe_start)
             if not self.children and self.held is None and (self.empty or self.draining or self.cfg["stop"]):
                 self.log("nothing to do (%s); exiting" % ("queue empty" if self.empty else "draining"))
                 self.resubmit()

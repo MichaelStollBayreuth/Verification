@@ -36,9 +36,12 @@ if [ "$(size queue/pairs.txt)" -le "$(pos queue/pairs.pos)" ] &&
    [ "$(size queue/requeue.txt)" -le "$(pos queue/requeue.pos)" ]; then
   exit 0  # nothing left to hand out
 fi
+# Our jobs, one squeue call: "id name state reason". If squeue fails (it did, briefly,
+# on 2026-11-02: DNS), stop: an empty list would mean "no workers" and 20 new ones.
+jobs=$(squeue --me -h -t PENDING,CONFIGURING,RUNNING -o "%i %j %T %r") || exit 1
 # (a worker calling this at its end does not count itself; its periodic call does)
 self=${SLURM_JOB_ID:-none}; [ -n "$KEEPER_MIN_AGE" ] && self=none
-count() { squeue --me -h -n "$1" -t PENDING,CONFIGURING,RUNNING -o %i | grep -v -x "$self" | wc -l; }
+count() { awk -v names=",$1," -v self="$self" 'index(names, "," $2 ",") && $1 != self' <<< "$jobs" | wc -l; }
 have=$(count strange-worker)
 for ((i = have; i < N; i++)); do
   echo "$(date '+%F %T') $have of $N workers; submitted job $(submit)"
@@ -47,11 +50,12 @@ done
 # extra workers on idle nodes
 ours=$(count strange-worker,strange-extra)
 [ "$ours" -lt "$M" ] || exit 0
-[ "$(squeue --me -h -n strange-worker,strange-extra -t PENDING -o %i | wc -l)" -eq 0 ] || exit 0
+[ "$(awk '($2 == "strange-worker" || $2 == "strange-extra") && $3 == "PENDING"' <<< "$jobs" | wc -l)" -eq 0 ] || exit 0
 # squeue shows only our own jobs (PrivateData=jobs); our keeper job pending with
 # reason Priority means that jobs of higher priority are waiting
-[ "$(squeue --me -h -n strange-keeper -t PENDING -o %r | grep -c -x Priority)" -eq 0 ] || exit 0
-nodes=$(sinfo -h -p normal -N -o "%n %f %T" | sort -u | grep -v '^r12g' | awk '$3 == "idle" || $3 == "idle~"')
+[ "$(awk '$2 == "strange-keeper" && $3 == "PENDING" && $4 == "Priority"' <<< "$jobs" | wc -l)" -eq 0 ] || exit 0
+ni=$(sinfo -h -p normal -N -o "%n %f %T") || exit 1
+nodes=$(sort -u <<< "$ni" | grep -v '^r12g' | awk '$3 == "idle" || $3 == "idle~"')
 big=$(grep -c 'EPYC-7352' <<< "$nodes")
 std=$(grep -c 'EPYC-7302' <<< "$nodes")
 n=$((M - ours)); [ $((big + std - R)) -lt $n ] && n=$((big + std - R))
