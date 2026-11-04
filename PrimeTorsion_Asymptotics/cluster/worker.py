@@ -46,6 +46,8 @@ DEFAULTS = dict(
     end_margin_s=300,     # ... before the end of the job minus this margin
     max_attempts=4,       # irregular ends of a task before it is given up (failed/)
     stale_s=1800,         # a running/ entry not touched for this long is dead
+    gone_s=900,           # ... and one of a job that squeue does not list after this long
+                          # (squeue alone is not trusted: on 2026-11-04 it omitted running jobs)
     heartbeat_s=300, janitor_s=600, config_s=60, memlog_s=300, loop_s=5,
     keeper_s=1800,        # regular workers run keep_workers.sh if nobody has for this long (0: never)
     stop=False,           # true: no worker starts new tasks
@@ -440,7 +442,7 @@ class Worker:
                 continue
             if jobid == self.jobid:
                 continue
-            dead = not self.job_alive(jobid, host, pid, slurm_jobs)
+            dead = age >= self.cfg["gone_s"] and not self.job_alive(jobid, host, pid, slurm_jobs)
             if not dead and age < self.cfg["stale_s"]:
                 continue
             reap = os.path.join(rdir, ".reap-%s-%s" % (e.name, self.jobid))

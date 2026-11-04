@@ -87,9 +87,11 @@ this and makes the client drop the entry by renaming a directory onto it (see
 - If a task had already printed its `CANDIDATE` line, it is requeued as a
   verification-only task (`V`), so the screening is not repeated.
 - If a worker disappears (time limit, `scancel`, node failure), its entries in
-  `running/` belong to a job that is no longer running, or are no longer
-  touched; every worker checks for such entries every 10 minutes (with
-  `squeue`) and requeues their tasks.
+  `running/` are no longer touched; every worker checks for such entries every
+  10 minutes and requeues their tasks once an entry has not been touched for
+  `stale_s` (30 minutes), or for `gone_s` (15 minutes) if `squeue` no longer
+  lists its job. (`squeue` alone is not trusted: during SLURM trouble it once
+  omitted running jobs, and the tasks of two live workers were run twice.)
 - On `SIGTERM` (cancellation) a worker kills its tasks and requeues them without
   counting an attempt; 30 minutes before its time limit (`SIGUSR1`) it stops
   taking tasks and requeues those that cannot finish in time.
