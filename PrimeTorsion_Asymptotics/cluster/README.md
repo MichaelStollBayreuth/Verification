@@ -95,6 +95,12 @@ this and makes the client drop the entry by renaming a directory onto it (see
 - On `SIGTERM` (cancellation) a worker kills its tasks and requeues them without
   counting an attempt; 30 minutes before its time limit (`SIGUSR1`) it stops
   taking tasks and requeues those that cannot finish in time.
+- A worker stops taking tasks (drains) when a new pair from `pairs.txt` cannot
+  finish before the end of its job. A requeued task that cannot (typically a
+  verification, which takes many times as long) is moved to the end of
+  `requeue.txt` for a worker with more time left, and the worker goes on with
+  the next task (`sq.claim` with `accept`). (Before, every worker that met
+  such a task drained.)
 - A task with `max_attempts` (4) irregular ends goes to `failed/` (it may need a
   node with more memory); so does a task whose Magma run fails (error, or an
   unconfirmed candidate). After three failures in a row a worker stops taking

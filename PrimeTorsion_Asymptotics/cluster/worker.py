@@ -354,7 +354,9 @@ class Worker:
             if self.empty and time.time() - self.last_claim_try < 120:
                 return
             self.last_claim_try = time.time()
-            t = sq.claim(self.Q, log=self.log)
+            # (a requeued task that does not fit in the remaining time is left
+            # for another worker; only a new pair that does not fit drains)
+            t = sq.claim(self.Q, log=self.log, accept=self.time_ok)
             self.empty = t is None
             if t is None:
                 return

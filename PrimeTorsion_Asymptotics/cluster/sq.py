@@ -167,17 +167,37 @@ def _take(Q, fname, posname):
     return line.decode()
 
 
-def claim(Q, log=None):
-    """The next task (requeued tasks first), or None if the queue is empty."""
+def claim(Q, log=None, accept=None):
+    """The next task (requeued tasks first), or None if the queue is empty.
+    A requeued task for which accept(task) is false (e.g. a long verification
+    that cannot finish before the end of the job) is moved to the end of
+    requeue.txt for another worker; only the lines present at the start are
+    scanned."""
     with Lock(Q, log=log):
-        for fname, posname in (("requeue.txt", "requeue.pos"), ("pairs.txt", "pairs.pos")):
-            while True:
-                line = _take(Q, fname, posname)
-                if line is None:
-                    break
-                if line.strip() and not line.startswith("#"):
-                    return parse_task(line)
-    return None
+        try:
+            end = os.path.getsize(qpath(Q, "requeue.txt"))
+        except FileNotFoundError:
+            end = 0
+        skipped, t = [], None
+        while t is None and read_pos(qpath(Q, "requeue.pos")) < end:
+            line = _take(Q, "requeue.txt", "requeue.pos")
+            if line is None:
+                break
+            if line.strip() and not line.startswith("#"):
+                t = parse_task(line)
+                if accept is not None and not accept(t):
+                    skipped.append(line)
+                    t = None
+        if skipped:
+            with open(qpath(Q, "requeue.txt"), "a") as f:
+                f.writelines(skipped)
+        while t is None:
+            line = _take(Q, "pairs.txt", "pairs.pos")
+            if line is None:
+                break
+            if line.strip() and not line.startswith("#"):
+                t = parse_task(line)
+        return t
 
 
 def requeue(Q, tasks, log=None):
