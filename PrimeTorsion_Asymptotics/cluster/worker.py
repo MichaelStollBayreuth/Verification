@@ -39,9 +39,15 @@ DEFAULTS = dict(
     peak_a=12.6, steady_a=2.0, mem_b=0.0, mem_exp=2.0, peak_s=45, peak_exp=2.0, young_frac=0.6,
     time_a=235.0, time_exp=1.75,             # predicted run time (s): time_a (p/2e5)^time_exp
     # A verification (task with a candidate) takes 12-20 times the predicted screening
-    # time (measured on lipwig for 2.0e5 < p < 2.8e5), and its peak is about 1.25 times
-    # the predicted screening peak.
-    verify_mem_factor=1.6, verify_time_factor=20.0,
+    # time (measured on lipwig for 2.0e5 < p < 2.8e5); its memory stays near its peak,
+    # which was 96.5 GB, 1.7 times the predicted screening peak, at p = 4.26e5 (with
+    # Magma's large binary; the standard one crashes there).
+    verify_mem_factor=1.8, verify_time_factor=20.0,
+    split_verify=False,   # true: a screening that finds a candidate stops there, and the
+                          # verification becomes a task of its own (V)
+    magma_verify="",      # the Magma command for V tasks (e.g. the large binary; "": --magma)
+    alone_max=1.05,       # a task predicted to need more than alone_max times the memory
+                          # of the node is left for a node with more memory
     time_safety=1.5,      # start a task only if time_safety * predicted time fits
     end_margin_s=300,     # ... before the end of the job minus this margin
     max_attempts=4,       # irregular ends of a task before it is given up (failed/)
@@ -202,13 +208,15 @@ class Worker:
 
     # ---------------------------------------------------------------- tasks
     def start(self, t):
-        cmd = [self.magma, "-b"]
         if t["kind"] == "V":
-            cmd.append("cand:=" + t["cand"])
+            cmd = [self.cfg["magma_verify"] or self.magma, "-b", "cand:=" + t["cand"]]
         else:
-            cmd += ["p:=%d" % t["p"], "n:=%d" % t["n"]]
+            cmd = [self.magma, "-b", "p:=%d" % t["p"], "n:=%d" % t["n"]]
+            if self.cfg["split_verify"]:
+                cmd.append("verify:=no")
         cmd.append("search_pair.m")
-        out = open(self.out_path(t), "w")
+        # (a verification appends to the output of its screening, if any)
+        out = open(self.out_path(t), "a" if t["kind"] == "V" else "w")
         proc = subprocess.Popen(cmd, cwd=self.code, stdin=subprocess.DEVNULL, stdout=out,
                                 stderr=subprocess.STDOUT)
         out.close()
@@ -216,9 +224,10 @@ class Worker:
         self.children.append(dict(task=t, name=sq.name_of(t["p"], t["n"]), proc=proc, start=time.time(),
                                   pmem=self.pred_mem(t), ptime=self.pred_time(t), killed=None, hwm=0))
         self.last_start = time.time()
-        self.log("start %s (%s, attempt %d) pid %d, predicted %.1f GB, %.0f s"
+        self.log("start %s (%s, attempt %d) pid %d, predicted %.1f GB, %.0f s%s"
                  % (sq.name_of(t["p"], t["n"]), t["kind"], t["attempts"], proc.pid,
-                    self.children[-1]["pmem"], self.children[-1]["ptime"]))
+                    self.children[-1]["pmem"], self.children[-1]["ptime"],
+                    "" if cmd[0] == self.magma else ", with " + cmd[0]))
 
     def give_back(self, t, why, irregular):
         """Requeue task t. A screening task whose candidate was already printed
@@ -237,6 +246,7 @@ class Worker:
                 self.fail(t, "gave up after %d irregular ends (last: %s)" % (t["attempts"], why))
                 return
         sq.requeue(self.Q, [t], log=self.log)
+        self.empty = False  # (the queue has this task now)
         self.unmark(t)
         self.log("requeued %s (%s, attempts %d): %s" % (sq.name_of(t["p"], t["n"]), t["kind"], t["attempts"], why))
 
@@ -285,6 +295,13 @@ class Worker:
                 self.log("done %s in %.0f s: %s (cpu %s s, peak %s MB, hwm %d MB)"
                          % (c["name"], wall, m.group(3), m.group(5), m.group(6), c["hwm"] // 1024))
                 self.failures = []
+            elif (rc == 0 and t["kind"] == "S" and "\nSCREENED " in "\n" + out
+                  and sq.candidate_from_output(self.out_path(t))):
+                # (split_verify: the candidate is verified by a task of its own)
+                self.log("candidate %s after %.0f s (screening); verification as a task of its own"
+                         % (c["name"], wall))
+                self.give_back(t, "candidate, to be verified", irregular=False)
+                self.failures = []
             elif c["killed"]:
                 self.give_back(t, c["killed"], irregular=(c["killed"] == "memory"))
             elif rc < 0:
@@ -318,10 +335,12 @@ class Worker:
     def admissible(self, t):
         # Young tasks (still building the modular symbols space) count with
         # young_frac times their peak memory, the others with their steady-state
-        # memory; the new task needs its peak.
+        # memory, verifications with their peak all the time (their memory stays
+        # near it); the new task needs its peak.
         total, avail = meminfo()
         now = time.time()
-        committed = sum(self.cfg["young_frac"] * self.pred_mem(c["task"], True)
+        committed = sum(self.pred_mem(c["task"], True) if c["task"]["kind"] == "V"
+                        else self.cfg["young_frac"] * self.pred_mem(c["task"], True)
                         if now - c["start"] < self.peak_window(c["task"]) else self.pred_mem(c["task"])
                         for c in self.children if not c["killed"])
         need = self.pred_mem(t, True)
@@ -341,6 +360,12 @@ class Worker:
     def time_ok(self, t):
         return time.time() + self.cfg["time_safety"] * self.pred_time(t) <= self.end - self.cfg["end_margin_s"]
 
+    def can_take(self, t):
+        """Whether this worker can run task t: it finishes in time, and it does
+        not need much more memory than the node has (verifications at large p;
+        a node with more memory takes them)."""
+        return self.time_ok(t) and self.pred_mem(t, True) <= self.cfg["alone_max"] * meminfo()[0]
+
     def maybe_start(self):
         c = self.cfg
         if self.draining or c["stop"] or self.breaker():
@@ -354,9 +379,10 @@ class Worker:
             if self.empty and time.time() - self.last_claim_try < 120:
                 return
             self.last_claim_try = time.time()
-            # (a requeued task that does not fit in the remaining time is left
-            # for another worker; only a new pair that does not fit drains)
-            t = sq.claim(self.Q, log=self.log, accept=self.time_ok)
+            # (a requeued task that does not fit in the remaining time or in the
+            # memory of the node is left for another worker; only a new pair
+            # that does not fit in the remaining time drains)
+            t = sq.claim(self.Q, log=self.log, accept=self.can_take)
             self.empty = t is None
             if t is None:
                 return

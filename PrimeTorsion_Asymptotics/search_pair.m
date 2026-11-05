@@ -13,6 +13,10 @@
 // If the verification did not finish (e.g. the process was killed), it can be
 // redone without the screening from the CANDIDATE line:
 //   magma -b 'cand:=<p, n, q, z, d, l, coeffs>' search_pair.m
+// With verify:=no a screening that finds a candidate stops after the CANDIDATE
+// line and prints "SCREENED <p, n>" instead of the RESULT and final lines, so
+// that the verification can run as a process of its own (e.g. with Magma's
+// "large" binary, which the verification needs from about p = 4.2e5 on).
 // The process fails (exit code 1) if a candidate is not confirmed.
 SetQuitOnError(true);
 SetColumns(0);
@@ -23,6 +27,7 @@ oneline := func<x | &cat[s cat " " : s in Split(Sprint(x), "\n")]>;
 // (Magma needs every identifier in a select expression to be assigned.)
 if not assigned cand then cand := ""; end if;
 if not assigned p then p := "0"; n := "0"; end if;
+if not assigned verify then verify := "yes"; end if;
 screen := cand eq "";
 p := screen select StringToInteger(p) else (eval cand)[1];
 n := screen select StringToInteger(n) else (eval cand)[2];
@@ -36,6 +41,10 @@ cands := screen select candidate_list(chi, screen_character_lean(chi : setup := 
 delete setup;
 if screen then
   for c in cands do printf "CANDIDATE %o\n", oneline(c); end for;
+  if verify eq "no" and not IsEmpty(cands) then
+    printf "SCREENED <%o, %o>\n", p, n;
+    quit;
+  end if;
 end if;
 verified := [verify_candidate(c) : c in cands];
 printf "RESULT %o\n", oneline(<p, n, cands, verified>);

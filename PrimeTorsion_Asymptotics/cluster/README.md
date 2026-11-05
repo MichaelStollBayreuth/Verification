@@ -134,6 +134,17 @@ the worker starts no other task until all its running tasks have ended. Capacity
 p = 2.1·10^5, 18 at 2.5·10^5, 12 at 3·10^5 (memory, not the 32 cores, is the
 limit beyond about 2.2·10^5).
 
+With `split_verify`, a screening task that finds a candidate stops after its
+`CANDIDATE` line (`search_pair.m` with `verify:=no` then prints `SCREENED <p, n>`),
+and the worker requeues the verification as a task of its own (`V`). It runs
+with `magma_verify`, e.g. Magma's large binary: from about p = 4.2·10^5 on, the
+standard binary crashes in the verification (a segmentation fault in
+`Kernel`, a size limit), while the large one needed 96.5 GB at p = 4.26·10^5. A
+verification counts with its full predicted peak for its whole run, since its
+memory stays near it. A worker leaves a task that needs more than `alone_max`
+times the memory of its node to a worker on a node with more memory; by the
+model, a node with 128 GB takes verifications up to about p = 4.8·10^5.
+
 ## Calibration
 
 `calib.sbatch` measured time and memory of single characters on one node
