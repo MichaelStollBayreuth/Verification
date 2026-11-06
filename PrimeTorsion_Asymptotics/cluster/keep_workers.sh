@@ -24,6 +24,8 @@ if [ -n "$KEEPER_MIN_AGE" ] && [ -f queue/keeper.last ] &&
   exit 0
 fi
 [ -n "$DRY" ] || touch queue/keeper.last
+# pairs that workers with older code left in open/: proofs in characteristic 0 (kind C)
+[ -n "$DRY" ] || python3 cluster/sweep_open.py --queue queue >> queue/sweep.log 2>&1
 N=${1:-$(cat queue/workers_target 2>/dev/null || echo 10)}
 M=${MAX_JOBS:-$(cat queue/max_jobs 2>/dev/null || echo 0)}
 R=${IDLE_RESERVE:-$(cat queue/idle_reserve 2>/dev/null || echo 10)}

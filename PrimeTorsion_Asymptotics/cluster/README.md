@@ -180,7 +180,11 @@ is also run as kind `C`. If the proof is not applicable (`T_2` not cyclic on
 `S`, e.g. for `n = 2` with `chi(2) = 1`), `crt/p-n.na` records it, and the
 pair goes back to Magma: as `V` if it has a candidate, as `S` if `p <=
 magma_max_p`, otherwise it stays in `open/`. A worker does not run a task
-whose pair is in `done/` already. `sbatch cluster/crt.sbatch [p n ...]` runs
+whose pair is in `done/` already, and with `crt_verify` it runs a task of kind
+`S` whose pair is in `open/` as kind `C`. `keep_workers.sh` runs
+`sweep_open.py`, which requeues the pairs in `open/` that nobody takes care
+of (left there by workers whose code does not know kind `C`) as tasks of kind
+`C` (log in `queue/sweep.log`). `sbatch cluster/crt.sbatch [p n ...]` runs
 `crt_verify.py` by hand for the pairs in `open/` (or those given).
 
 ## Calibration
