@@ -48,7 +48,9 @@ def main():
     crt_done, crt_pending = lines_after(sq.qpath(Q, "crt.txt"), sq.read_pos(sq.qpath(Q, "crt.pos")))
     ndone = sum(len(os.listdir(d)) for d in glob.glob(sq.qpath(Q, "done", "*")))
     failed = sorted(os.listdir(sq.qpath(Q, "failed")))
-    nopen = len(os.listdir(sq.qpath(Q, "open"))) if os.path.isdir(sq.qpath(Q, "open")) else 0
+    opened = [f[:-4] for f in os.listdir(sq.qpath(Q, "open"))] if os.path.isdir(sq.qpath(Q, "open")) else []
+    nopen = len(opened)
+    nresolved = sum(1 for name in opened if os.path.exists(sq.done_path(Q, *map(int, name.split("-")))))
     running = []
     for e in os.scandir(sq.qpath(Q, "running")):
         if e.name.startswith(".") or ".tmp." in e.name:
@@ -76,7 +78,8 @@ def main():
     started = sum(1 for r in running if r[1][2] != "0")
     print("done: %d, running: %d (+%d claimed, waiting for memory), failed: %d, strange pairs: %d%s"
           % (ndone, started, len(running) - started, len(failed), len(strange),
-             ", not certified by the sparse method: %d (open/)" % nopen if nopen else ""))
+             ", not certified by the sparse method: %d (open/; %d of them done otherwise)" % (nopen, nresolved)
+             if nopen else ""))
     hour = [r for r in rows if time.time() - float(r[0]) < 3600 and r[9] != "FAILED"]
     if hour:
         print("last hour: %d tasks done, mean wall %.0f s, max peak %s MB"
