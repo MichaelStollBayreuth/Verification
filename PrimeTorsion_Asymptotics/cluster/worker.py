@@ -462,14 +462,16 @@ class Worker:
     def sparse_kind(self, t):
         """Kind N for a task of kind S with p >= sparse_from, unless the sparse
         method has already failed to certify it (open/p-n.out exists); kind C for
-        a task of kind V if crt_verify, unless the proof in characteristic 0 is not
-        applicable (crt/p-n.na exists)."""
+        such a task and for one of kind V if crt_verify, unless the proof in
+        characteristic 0 is not applicable (crt/p-n.na exists)."""
         f, name = self.cfg["sparse_from"], sq.name_of(t["p"], t["n"])
-        if (t["kind"] == "S" and f and t["p"] >= f
-                and not os.path.exists(sq.qpath(self.Q, "open", name + ".out"))):
-            t = dict(t, kind="N")
-        if (t["kind"] == "V" and self.cfg["crt_verify"]
-                and not os.path.exists(sq.qpath(self.Q, "crt", name + ".na"))):
+        crt = self.cfg["crt_verify"] and not os.path.exists(sq.qpath(self.Q, "crt", name + ".na"))
+        if t["kind"] == "S" and f and t["p"] >= f:
+            if not os.path.exists(sq.qpath(self.Q, "open", name + ".out")):
+                t = dict(t, kind="N")
+            elif crt:  # (screened sparsely, not certified: e.g. requeued by a worker without kind C)
+                t = dict(t, kind="C")
+        if t["kind"] == "V" and crt:
             t = dict(t, kind="C")
         return t
 
