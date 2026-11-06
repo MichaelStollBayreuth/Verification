@@ -8,16 +8,19 @@ The queue lives in a directory Q on a file system shared by all nodes:
                    "S p n attempts" (screening) or "V p n attempts <candidate>"
                    (verification only), append-only
   Q/requeue.pos    byte offset in requeue.txt of the next task to hand out
+  Q/crt.txt, Q/crt.pos   the same for tasks "C p n attempts [<candidate>]"
+                   (proof in characteristic 0, sparse/crt_verify.py)
   Q/lock/          lock directory (mkdir is atomic, also on PanFS and NFS)
   Q/running/NAME   one file per running task: "jobid host pid start kind attempts"
                    (NAME = "p-n"); touched regularly by the worker (heartbeat)
   Q/out/NAME.out   Magma output of a running task
   Q/done/SHARD/NAME.out   Magma output of a finished task (SHARD = p div 1000)
   Q/failed/NAME.out       Magma output of a task that ended with an error
+  Q/open/NAME.out         output of a sparse screening (N) that did not certify the pair
   Q/logs/JOBID.log        worker log; Q/logs/JOBID.tsv one line per finished task
 
-All updates of pairs.pos, requeue.pos and requeue.txt happen under the lock;
-everything else is written by the one worker that owns the task.
+All updates of pairs.pos, requeue.pos, requeue.txt, crt.pos and crt.txt happen
+under the lock; everything else is written by the one worker that owns the task.
 """
 
 import os
@@ -134,20 +137,23 @@ def read_pos(path):
 
 def parse_task(line):
     """A task line -> dict(kind, p, n, attempts, cand). Lines of pairs.txt
-    are "p n"; lines of requeue.txt are "S p n a" or "V p n a <candidate>"."""
+    are "p n"; lines of requeue.txt are "S p n a", "V p n a <candidate>" or
+    "C p n a [<candidate>]". (A worker may run a task of kind S as kind N,
+    with the sparse method, and one of kind V as kind C; see claim. In the
+    files an N task remains S.)"""
     w = line.split(None, 4)
-    if w[0] in ("S", "V"):
+    if w[0] in ("S", "V", "C"):
         t = dict(kind=w[0], p=int(w[1]), n=int(w[2]), attempts=int(w[3]), cand=None)
-        if t["kind"] == "V":
+        if t["kind"] == "V" or (t["kind"] == "C" and len(w) > 4):
             t["cand"] = w[4].strip()
         return t
     return dict(kind="S", p=int(w[0]), n=int(w[1]), attempts=0, cand=None)
 
 
 def task_line(t):
-    if t["kind"] == "V":
-        return "V %d %d %d %s" % (t["p"], t["n"], t["attempts"], t["cand"])
-    return "S %d %d %d" % (t["p"], t["n"], t["attempts"])
+    if t["kind"] in ("V", "C"):
+        return ("%s %d %d %d %s" % (t["kind"], t["p"], t["n"], t["attempts"], t["cand"] or "")).rstrip()
+    return "S %d %d %d" % (t["p"], t["n"], t["attempts"])  # (also for kind N)
 
 
 def _take(Q, fname, posname):
@@ -167,46 +173,67 @@ def _take(Q, fname, posname):
     return line.decode()
 
 
-def claim(Q, log=None, accept=None):
-    """The next task (requeued tasks first), or None if the queue is empty.
-    A requeued task for which accept(task) is false (e.g. a long verification
-    that cannot finish before the end of the job) is moved to the end of
-    requeue.txt for another worker; only the lines present at the start are
-    scanned."""
+def _scan(Q, fname, posname, accept, convert):
+    """Under the lock: the next task of a requeue file (requeue.txt, crt.txt) that
+    accept takes; the lines it does not take are moved to the end of the file (for
+    another worker). Only the lines present at the start are scanned."""
+    try:
+        end = os.path.getsize(qpath(Q, fname))
+    except FileNotFoundError:
+        return None
+    skipped, t = [], None
+    while t is None and read_pos(qpath(Q, posname)) < end:
+        line = _take(Q, fname, posname)
+        if line is None:
+            break
+        if line.strip() and not line.startswith("#"):
+            t = parse_task(line)
+            if convert is not None:
+                t = convert(t)
+            if accept is not None and not accept(t):
+                skipped.append(line)
+                t = None
+    if skipped:
+        with open(qpath(Q, fname), "a") as f:
+            f.writelines(skipped)
+    return t
+
+
+def claim(Q, log=None, accept=None, convert=None):
+    """The next task (requeued tasks first, then proofs in characteristic 0), or
+    None if the queue is empty. A requeued task for which accept(task) is false
+    (e.g. a long verification that cannot finish before the end of the job) is
+    moved to the end of requeue.txt (crt.txt) for another worker; only the lines
+    present at the start are scanned. convert(task), if given, is applied to
+    every task read (it may change its kind from S to N or from V to C), before
+    accept."""
     with Lock(Q, log=log):
-        try:
-            end = os.path.getsize(qpath(Q, "requeue.txt"))
-        except FileNotFoundError:
-            end = 0
-        skipped, t = [], None
-        while t is None and read_pos(qpath(Q, "requeue.pos")) < end:
-            line = _take(Q, "requeue.txt", "requeue.pos")
-            if line is None:
-                break
-            if line.strip() and not line.startswith("#"):
-                t = parse_task(line)
-                if accept is not None and not accept(t):
-                    skipped.append(line)
-                    t = None
-        if skipped:
-            with open(qpath(Q, "requeue.txt"), "a") as f:
-                f.writelines(skipped)
+        t = _scan(Q, "requeue.txt", "requeue.pos", accept, convert)
+        if t is None:
+            t = _scan(Q, "crt.txt", "crt.pos", accept, convert)
         while t is None:
             line = _take(Q, "pairs.txt", "pairs.pos")
             if line is None:
                 break
             if line.strip() and not line.startswith("#"):
                 t = parse_task(line)
+                if convert is not None:
+                    t = convert(t)
         return t
 
 
 def requeue(Q, tasks, log=None):
+    """Append tasks to requeue.txt, those of kind C to crt.txt (which workers with
+    older code, which do not know that kind, do not read)."""
     if not tasks:
         return
     with Lock(Q, log=log):
-        with open(qpath(Q, "requeue.txt"), "a") as f:
-            for t in tasks:
-                f.write(task_line(t) + "\n")
+        for fname, ts in (("requeue.txt", [t for t in tasks if t["kind"] != "C"]),
+                          ("crt.txt", [t for t in tasks if t["kind"] == "C"])):
+            if ts:
+                with open(qpath(Q, fname), "a") as f:
+                    for t in ts:
+                        f.write(task_line(t) + "\n")
 
 
 def candidate_from_output(path):
@@ -223,5 +250,5 @@ def candidate_from_output(path):
 
 
 def ensure_dirs(Q):
-    for d in ("running", "out", "done", "failed", "logs", "slurm"):
+    for d in ("running", "out", "done", "failed", "open", "logs", "slurm"):
         os.makedirs(qpath(Q, d), exist_ok=True)

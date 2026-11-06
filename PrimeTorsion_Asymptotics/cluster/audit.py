@@ -27,15 +27,18 @@ def main():
     Q = os.path.abspath(a.queue)
     handed, pending = lines_after(sq.qpath(Q, "pairs.txt"), sq.read_pos(sq.qpath(Q, "pairs.pos")))
     _, rq_pending = lines_after(sq.qpath(Q, "requeue.txt"), sq.read_pos(sq.qpath(Q, "requeue.pos")))
+    _, crt_pending = lines_after(sq.qpath(Q, "crt.txt"), sq.read_pos(sq.qpath(Q, "crt.pos")))
     names = lambda lines: {sq.name_of(t["p"], t["n"]) for t in map(sq.parse_task, lines)}
     expected = names(handed) | names(pending)
-    waiting = names(pending) | names(rq_pending)
+    waiting = names(pending) | names(rq_pending) | names(crt_pending)
     done = {os.path.basename(f)[:-4] for f in glob.glob(sq.qpath(Q, "done", "*", "*.out"))}
     failed = {f[:-4] for f in os.listdir(sq.qpath(Q, "failed"))}
+    opened = {f[:-4] for f in os.listdir(sq.qpath(Q, "open"))} if os.path.isdir(sq.qpath(Q, "open")) else set()
     running = {f for f in os.listdir(sq.qpath(Q, "running")) if not f.startswith(".") and ".tmp." not in f}
-    lost = sorted(expected - done - waiting - failed - running, key=lambda s: tuple(map(int, s.split("-"))))
-    print("%d pairs: %d done, %d running, %d waiting, %d failed, %d lost"
-          % (len(expected), len(expected & done), len(running), len(waiting - done), len(failed - done), len(lost)))
+    lost = sorted(expected - done - waiting - failed - opened - running, key=lambda s: tuple(map(int, s.split("-"))))
+    print("%d pairs: %d done, %d running, %d waiting, %d failed, %d open (not certified by the sparse method), %d lost"
+          % (len(expected), len(expected & done), len(running), len(waiting - done), len(failed - done),
+             len(opened - done - waiting - running), len(lost)))
     if lost:
         print("lost:", " ".join(lost[:50]), "..." if len(lost) > 50 else "")
         if a.requeue:

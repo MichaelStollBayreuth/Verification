@@ -48,6 +48,22 @@ DEFAULTS = dict(
     magma_verify="",      # the Magma command for V tasks (e.g. the large binary; "": --magma)
     alone_max=1.05,       # a task predicted to need more than alone_max times the memory
                           # of the node is left for a node with more memory
+    sparse_from=0,        # a task of kind S with p >= sparse_from (if > 0) is run as kind N:
+                          # screening with Najman's sparse method (sparse/sparse_pair.py;
+                          # see sparse/README.md), unless open/ has it already
+    # Tasks of kind N need sparse_mem_a + sparse_mem_b x GiB and sparse_time_a x +
+    # sparse_time_b x^2 seconds, x = p/1e6 (measured on lipwig with 32 tasks per node:
+    # 0.9 GB, 2.9 min at p = 7e5; 1.4 GB at p = 1e6).
+    sparse_mem_a=0.3, sparse_mem_b=1.2, sparse_time_a=85.0, sparse_time_b=245.0,
+    magma_max_p=0,        # an N task that does not certify its pair goes to open/ and,
+                          # if p <= magma_max_p, is requeued as an S task, which then runs
+                          # search_pair.m (open/ has it); with crt_verify only if the proof
+                          # in characteristic 0 is not applicable
+    crt_verify=False,     # true: such a pair is requeued as a task of kind C (crt_verify.py,
+                          # proof of strangeness in characteristic 0), and a task of kind V
+                          # is run as kind C unless crt/p-n.na says that it is not applicable
+    crt_jobs=8,           # CPUs of a task of kind C; its memory and time: crt_jobs and
+    crt_time_factor=8.0,  # crt_time_factor times those of a task of kind N
     time_safety=1.5,      # start a task only if time_safety * predicted time fits
     end_margin_s=300,     # ... before the end of the job minus this margin
     max_attempts=4,       # irregular ends of a task before it is given up (failed/)
@@ -58,6 +74,26 @@ DEFAULTS = dict(
     keeper_s=1800,        # regular workers run keep_workers.sh if nobody has for this long (0: never)
     stop=False,           # true: no worker starts new tasks
 )
+
+def predicted_mem(c, t, peak=False):
+    """Predicted memory (GiB) of task t under the parameters c: steady state, or its peak."""
+    if t["kind"] in ("N", "C"):
+        m = c["sparse_mem_a"] + c["sparse_mem_b"] * t["p"] / 1e6
+        return m * (c["crt_jobs"] if t["kind"] == "C" else 1)
+    a = c["peak_a"] if peak else c["steady_a"]
+    m = a * (t["p"] / 2e5) ** c["mem_exp"] + c["mem_b"]
+    return m * (c["verify_mem_factor"] if t["kind"] == "V" else 1)
+
+
+def predicted_time(c, t):
+    """Predicted run time (s) of task t under the parameters c."""
+    if t["kind"] in ("N", "C"):
+        x = t["p"] / 1e6
+        s = c["sparse_time_a"] * x + c["sparse_time_b"] * x * x
+        return s * (c["crt_time_factor"] if t["kind"] == "C" else 1)
+    s = c["time_a"] * (t["p"] / 2e5) ** c["time_exp"]
+    return s * (c["verify_time_factor"] if t["kind"] == "V" else 1)
+
 
 FINAL = re.compile(r"^p = (\d+), n = (\d+): (not strange|STRANGE, strdim (\d+)) \(([\d.]+) s, (\d+) MB\)\s*$", re.M)
 
@@ -177,18 +213,13 @@ class Worker:
 
     def pred_mem(self, t, peak=False):
         """Predicted memory (GiB) of task t: steady state, or its peak."""
-        c = self.cfg
-        a = c["peak_a"] if peak else c["steady_a"]
-        m = a * (t["p"] / 2e5) ** c["mem_exp"] + c["mem_b"]
-        return m * (c["verify_mem_factor"] if t["kind"] == "V" else 1)
+        return predicted_mem(self.cfg, t, peak)
 
     def peak_window(self, t):
         return self.cfg["peak_s"] * (t["p"] / 2e5) ** self.cfg["peak_exp"]
 
     def pred_time(self, t):
-        c = self.cfg
-        s = c["time_a"] * (t["p"] / 2e5) ** c["time_exp"]
-        return s * (c["verify_time_factor"] if t["kind"] == "V" else 1)
+        return predicted_time(self.cfg, t)
 
     def running_path(self, t):
         return sq.qpath(self.Q, "running", sq.name_of(t["p"], t["n"]))
@@ -208,17 +239,29 @@ class Worker:
 
     # ---------------------------------------------------------------- tasks
     def start(self, t):
-        if t["kind"] == "V":
-            cmd = [self.cfg["magma_verify"] or self.magma, "-b", "cand:=" + t["cand"]]
+        if t["kind"] == "N":
+            # (in a process group of its own, so that a kill reaches its steps)
+            cmd = [sys.executable, os.path.join(self.code, "sparse", "sparse_pair.py"),
+                   str(t["p"]), str(t["n"]), "--magma", self.magma]
+            how = ", sparse"
+        elif t["kind"] == "C":
+            os.makedirs(sq.qpath(self.Q, "crt"), exist_ok=True)
+            cmd = [sys.executable, os.path.join(self.code, "sparse", "crt_verify.py"), str(t["p"]), str(t["n"]),
+                   "--magma", self.magma, "--jobs", str(self.slots(t)), "--out", sq.qpath(self.Q, "crt")]
+            how = ", proof in characteristic 0 with %d CPUs" % self.slots(t)
         else:
-            cmd = [self.magma, "-b", "p:=%d" % t["p"], "n:=%d" % t["n"]]
-            if self.cfg["split_verify"]:
-                cmd.append("verify:=no")
-        cmd.append("search_pair.m")
+            if t["kind"] == "V":
+                cmd = [self.cfg["magma_verify"] or self.magma, "-b", "cand:=" + t["cand"]]
+            else:
+                cmd = [self.magma, "-b", "p:=%d" % t["p"], "n:=%d" % t["n"]]
+                if self.cfg["split_verify"]:
+                    cmd.append("verify:=no")
+            cmd.append("search_pair.m")
+            how = "" if cmd[0] == self.magma else ", with " + cmd[0]
         # (a verification appends to the output of its screening, if any)
         out = open(self.out_path(t), "a" if t["kind"] == "V" else "w")
         proc = subprocess.Popen(cmd, cwd=self.code, stdin=subprocess.DEVNULL, stdout=out,
-                                stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT, start_new_session=(t["kind"] in ("N", "C")))
         out.close()
         self.mark_running(t, proc.pid)
         self.children.append(dict(task=t, name=sq.name_of(t["p"], t["n"]), proc=proc, start=time.time(),
@@ -226,8 +269,7 @@ class Worker:
         self.last_start = time.time()
         self.log("start %s (%s, attempt %d) pid %d, predicted %.1f GB, %.0f s%s"
                  % (sq.name_of(t["p"], t["n"]), t["kind"], t["attempts"], proc.pid,
-                    self.children[-1]["pmem"], self.children[-1]["ptime"],
-                    "" if cmd[0] == self.magma else ", with " + cmd[0]))
+                    self.children[-1]["pmem"], self.children[-1]["ptime"], how))
 
     def give_back(self, t, why, irregular):
         """Requeue task t. A screening task whose candidate was already printed
@@ -264,6 +306,60 @@ class Worker:
         self.log("FAILED %s: %s" % (name, why))
         if own:
             self.failures.append(time.time())
+
+    def uncertified(self, t, out, wall):
+        """An N task that did not certify its pair: its output goes to open/, and
+        with p <= magma_max_p the pair is requeued as an S task (search_pair.m)."""
+        name = sq.name_of(t["p"], t["n"])
+        m = re.search(r"^UNCERTIFIED <(.*)>", out, re.M)
+        crt = self.cfg["crt_verify"]
+        magma = not crt and t["p"] <= self.cfg["magma_max_p"]
+        how = "; requeued as C" if crt else "; requeued as S" if magma else ""
+        dest = sq.qpath(self.Q, "open", name + ".out")
+        os.replace(self.out_path(t), dest)
+        with open(dest, "a") as f:
+            f.write("# worker %s on %s: not certified%s\n" % (self.jobid, sq.HOST, how))
+        if crt or magma:
+            sq.requeue(self.Q, [dict(t, kind="C" if crt else "S", attempts=0)], log=self.log)
+            self.empty = False
+        self.unmark(t)
+        self.tsv_line(t, wall, 0, 0, 0, "UNCERTIFIED")
+        self.log("%s not certified by the sparse method (p, n, k, L, chi(2) = 1: %s)%s"
+                 % (name, m.group(1) if m else "?", how or "; see open/"))
+
+    def not_applicable(self, t, out, wall):
+        """A task of kind C whose proof is not applicable (T_2 not cyclic on S): crt/p-n.na
+        records it; then the candidate, if any, is verified with Magma (V), and otherwise
+        the pair is screened with Magma (S) if p <= magma_max_p, or stays in open/."""
+        name = sq.name_of(t["p"], t["n"])
+        with open(sq.qpath(self.Q, "crt", name + ".na"), "w") as f:
+            f.write(out)
+        if t["cand"]:
+            t2, how = dict(t, kind="V", attempts=0), "requeued as V"
+        elif t["p"] <= self.cfg["magma_max_p"]:
+            t2, how = dict(t, kind="S", attempts=0), "requeued as S"
+        else:
+            t2, how = None, "see open/"
+        if t2:
+            sq.requeue(self.Q, [t2], log=self.log)
+            self.empty = False
+        try:
+            os.remove(self.out_path(t))
+        except FileNotFoundError:
+            pass
+        self.unmark(t)
+        self.tsv_line(t, wall, 0, 0, 0, "CRT_NOT_APPLICABLE")
+        self.log("%s: proof in characteristic 0 not applicable (T_2 not cyclic on S); %s" % (name, how))
+
+    def signal_task(self, c, sig):
+        """Send sig to task c (to the whole process group of an N task)."""
+        try:
+            if c["task"]["kind"] in ("N", "C"):
+                os.killpg(c["proc"].pid, sig)
+            elif c["proc"].poll() is None:
+                c["proc"].send_signal(sig)
+        except ProcessLookupError:
+            pass
 
     def tsv_line(self, t, wall, cpu, peak_mb, hwm_mb, result):
         self.tsv.write("%d\t%s\t%s\t%d\t%s\t%.0f\t%s\t%s\t%d\t%s\n"
@@ -302,6 +398,12 @@ class Worker:
                          % (c["name"], wall))
                 self.give_back(t, "candidate, to be verified", irregular=False)
                 self.failures = []
+            elif rc == 0 and t["kind"] == "N" and "\nUNCERTIFIED " in "\n" + out:
+                self.uncertified(t, out, wall)
+                self.failures = []
+            elif rc == 0 and t["kind"] == "C" and "\nCRT_NOT_APPLICABLE " in "\n" + out:
+                self.not_applicable(t, out, wall)
+                self.failures = []
             elif c["killed"]:
                 self.give_back(t, c["killed"], irregular=(c["killed"] == "memory"))
             elif rc < 0:
@@ -315,10 +417,7 @@ class Worker:
             return
         c["killed"] = why
         c["kill_t"] = time.time()
-        try:
-            c["proc"].terminate()
-        except ProcessLookupError:
-            pass
+        self.signal_task(c, signal.SIGTERM)
         self.log("killing %s (%s)" % (c["name"], why))
 
     def memory_guard(self):
@@ -330,7 +429,7 @@ class Worker:
         # escalate: SIGKILL for tasks that ignore SIGTERM for 30 s
         for c in self.children:
             if c["killed"] and c["proc"].poll() is None and time.time() - c["kill_t"] > 30:
-                c["proc"].kill()
+                self.signal_task(c, signal.SIGKILL)
 
     def admissible(self, t):
         # Young tasks (still building the modular symbols space) count with
@@ -360,6 +459,24 @@ class Worker:
     def time_ok(self, t):
         return time.time() + self.cfg["time_safety"] * self.pred_time(t) <= self.end - self.cfg["end_margin_s"]
 
+    def sparse_kind(self, t):
+        """Kind N for a task of kind S with p >= sparse_from, unless the sparse
+        method has already failed to certify it (open/p-n.out exists); kind C for
+        a task of kind V if crt_verify, unless the proof in characteristic 0 is not
+        applicable (crt/p-n.na exists)."""
+        f, name = self.cfg["sparse_from"], sq.name_of(t["p"], t["n"])
+        if (t["kind"] == "S" and f and t["p"] >= f
+                and not os.path.exists(sq.qpath(self.Q, "open", name + ".out"))):
+            t = dict(t, kind="N")
+        if (t["kind"] == "V" and self.cfg["crt_verify"]
+                and not os.path.exists(sq.qpath(self.Q, "crt", name + ".na"))):
+            t = dict(t, kind="C")
+        return t
+
+    def slots(self, t):
+        """CPUs that task t occupies."""
+        return min(self.cfg["crt_jobs"], self.max_procs()) if t["kind"] == "C" else 1
+
     def can_take(self, t):
         """Whether this worker can run task t: it finishes in time, and it does
         not need much more memory than the node has (verifications at large p;
@@ -373,7 +490,8 @@ class Worker:
                 self.give_back(self.held, "worker stops taking tasks", irregular=False)
                 self.held = None
             return
-        if len(self.children) >= self.max_procs() or time.time() - self.last_start < c["delay_s"]:
+        if (sum(self.slots(ch["task"]) for ch in self.children) >= self.max_procs()
+                or time.time() - self.last_start < c["delay_s"]):
             return
         if self.held is None:
             if self.empty and time.time() - self.last_claim_try < 120:
@@ -382,9 +500,13 @@ class Worker:
             # (a requeued task that does not fit in the remaining time or in the
             # memory of the node is left for another worker; only a new pair
             # that does not fit in the remaining time drains)
-            t = sq.claim(self.Q, log=self.log, accept=self.can_take)
+            t = sq.claim(self.Q, log=self.log, accept=self.can_take, convert=self.sparse_kind)
             self.empty = t is None
             if t is None:
+                return
+            if os.path.exists(sq.done_path(self.Q, t["p"], t["n"])):
+                # (e.g. a verification of a pair that was proved strange otherwise)
+                self.log("%s (%s) is done already; not run" % (sq.name_of(t["p"], t["n"]), t["kind"]))
                 return
             self.mark_running(t, 0)
             self.held = t
@@ -395,6 +517,8 @@ class Worker:
             self.give_back(t, "not enough time left in this job", irregular=False)
             self.held = None
             return
+        if sum(self.slots(ch["task"]) for ch in self.children) + self.slots(t) > self.max_procs():
+            return  # (a task of kind C waits for its CPUs)
         if self.admissible(t):
             self.held = None
             self.start(t)
@@ -536,7 +660,7 @@ class Worker:
             self.reap()
             time.sleep(1)
         for c in self.children:  # still alive: kill hard and requeue
-            c["proc"].kill()
+            self.signal_task(c, signal.SIGKILL)
             self.give_back(c["task"], why, irregular=False)
         if self.held:
             self.give_back(self.held, why, irregular=False)

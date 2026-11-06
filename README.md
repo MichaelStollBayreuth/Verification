@@ -40,6 +40,13 @@ for verifying computational assertions in some of my papers.
   run it on a SLURM cluster with a shared queue that can grow while the
   search runs (see [cluster/README.md](PrimeTorsion_Asymptotics/cluster/README.md)).
 
+* [sparse/](PrimeTorsion_Asymptotics/sparse/):
+  the search from about 450000 on, with memory linear in p: screening with
+  Filip Najman's sparse method (from https://github.com/F-Najman/Sd, MIT
+  license), which certifies most pairs as not strange, and a proof of
+  strangeness in characteristic 0 by Chinese remaindering for the others;
+  the cluster scripts run both (see [sparse/README.md](PrimeTorsion_Asymptotics/sparse/README.md)).
+
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
   [lmfdb_ec_curvedata_even_rank.m](PrimeTorsion_Asymptotics/lmfdb_ec_curvedata_even_rank.m):

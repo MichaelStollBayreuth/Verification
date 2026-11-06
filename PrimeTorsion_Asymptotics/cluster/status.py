@@ -14,7 +14,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sq  # noqa: E402
-from worker import DEFAULTS  # noqa: E402
+from worker import DEFAULTS, predicted_time  # noqa: E402
 
 
 def lines_after(path, pos):
@@ -45,8 +45,10 @@ def main():
         pass
     handed, pending = lines_after(sq.qpath(Q, "pairs.txt"), sq.read_pos(sq.qpath(Q, "pairs.pos")))
     rq_done, rq_pending = lines_after(sq.qpath(Q, "requeue.txt"), sq.read_pos(sq.qpath(Q, "requeue.pos")))
+    crt_done, crt_pending = lines_after(sq.qpath(Q, "crt.txt"), sq.read_pos(sq.qpath(Q, "crt.pos")))
     ndone = sum(len(os.listdir(d)) for d in glob.glob(sq.qpath(Q, "done", "*")))
     failed = sorted(os.listdir(sq.qpath(Q, "failed")))
+    nopen = len(os.listdir(sq.qpath(Q, "open"))) if os.path.isdir(sq.qpath(Q, "open")) else 0
     running = []
     for e in os.scandir(sq.qpath(Q, "running")):
         if e.name.startswith(".") or ".tmp." in e.name:
@@ -67,18 +69,21 @@ def main():
                     if w[9].startswith("STRANGE"):
                         strange[w[1]] = w[9]
     total = len(handed) + len(pending)
-    print("pairs: %d enqueued, %d handed out, %d not yet; requeued: %d (%d pending)"
-          % (total, len(handed), len(pending), len(rq_done) + len(rq_pending), len(rq_pending)))
+    print("pairs: %d enqueued, %d handed out, %d not yet; requeued: %d (%d pending)%s"
+          % (total, len(handed), len(pending), len(rq_done) + len(rq_pending), len(rq_pending),
+             "; proofs in characteristic 0: %d (%d pending)" % (len(crt_done) + len(crt_pending), len(crt_pending))
+             if crt_done or crt_pending else ""))
     started = sum(1 for r in running if r[1][2] != "0")
-    print("done: %d, running: %d (+%d claimed, waiting for memory), failed: %d, strange pairs: %d"
-          % (ndone, started, len(running) - started, len(failed), len(strange)))
+    print("done: %d, running: %d (+%d claimed, waiting for memory), failed: %d, strange pairs: %d%s"
+          % (ndone, started, len(running) - started, len(failed), len(strange),
+             ", not certified by the sparse method: %d (open/)" % nopen if nopen else ""))
     hour = [r for r in rows if time.time() - float(r[0]) < 3600 and r[9] != "FAILED"]
     if hour:
         print("last hour: %d tasks done, mean wall %.0f s, max peak %s MB"
               % (len(hour), sum(float(r[5]) for r in hour) / len(hour), max(int(r[7]) for r in hour)))
     if pending and started:
-        ps = [int(l.split()[0]) for l in pending]
-        pred = sum(cfg["time_a"] * (p / 2e5) ** cfg["time_exp"] for p in ps)
+        sparse = lambda t: dict(t, kind="N") if t["kind"] == "S" and 0 < cfg["sparse_from"] <= t["p"] else t
+        pred = sum(predicted_time(cfg, sparse(sq.parse_task(l))) for l in pending)
         print("pending work (model): %.0f core-hours, i.e. %.1f days at the current %d tasks in parallel"
               % (pred / 3600, pred / 86400 / started, started))
     try:

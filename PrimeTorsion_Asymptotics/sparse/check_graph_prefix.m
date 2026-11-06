@@ -1,0 +1,11 @@
+SetQuitOnError(true);SetColumns(0);SetMemoryLimit(8*10^9);SetSeed(20261029);tt:=Cputime();
+function ints(s)return[StringToInteger(x):x in Split(s," ")];end function;
+ls:=Split(Read(GraphIn),"\n");h:=ints(ls[1]);q,p,n,ns,nr,nnz,c2,ei,ec:=Explode(h);assert IsPrime(q)and IsPrime(p)and n gt 1 and ((p-1)div 2)mod n eq 0;F:=GF(q);G:=DirichletGroup(p,F);chi:=G.1^ExactQuotient(#G,n);assert chi(2)eq F!c2;
+ps:=Split(Read(Prepared),"\n");hh:=ints(ps[1]);assert hh[1]eq q and hh[2]eq ns and hh[4]eq nnz;k:=hh[3];V:=VectorSpace(F,ns);v:=V!ints(ps[2]);u:=V!ints(ps[3]);
+for r in[1..nr]do a:=ints(ls[r+1]);z:=a[1];assert #a eq 1+2*z and z ge 1 and z le 3;assert &+[F|a[2*j+1]*u[a[2*j]+1]:j in[1..z]]eq 0;end for;
+R:=SparseMatrix(F,ns,ns);
+for i in[1..ns]do a:=ints(ls[1+nr+i]);z:=a[1];assert #a eq 1+2*z;for j in[1..z]do R[i,a[2*j]+1]:=a[2*j+1];end for;end for;assert NNZEntries(R)eq nnz;
+e:=V!0;e[ei+1]:=ec;e:=(e*R-(2*c2+1)*e);e:=(e*R-(c2+2)*e);assert e eq v;
+check:=ints(ps[4+ns]);assert #check eq 65 and check[1]eq 64;uc:=Matrix(F,ns,1,Eltseq(u));
+for i in[1..64]do assert(v*uc)[1]eq F!check[i+1];v:=v*R;end for;
+printf "S20_GRAPH_NATIVE_PREFIX_PASS p=%o order=%o q=%o dimension=%o ambient_dimension=%o native_terms=64 all_functional_relations_checked=true winding_vector_checked=true seconds=%o\n",p,n,q,k,ns,Cputime(tt);quit;

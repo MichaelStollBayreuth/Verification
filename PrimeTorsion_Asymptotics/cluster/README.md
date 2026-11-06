@@ -63,10 +63,13 @@ tasks. To stop all workers from taking new tasks, set `"stop": true` in
 |---|---|
 | `pairs.txt`, `pairs.pos` | the tasks `p n` (append-only) and the offset of the next one to hand out |
 | `requeue.txt`, `requeue.pos` | tasks to be redone (served first): `S p n attempts` or `V p n attempts candidate` |
+| `crt.txt`, `crt.pos` | proofs in characteristic 0 (served next): `C p n attempts [candidate]` |
 | `running/p-n` | one file per running task: job id, host, pid, start time; touched every 5 minutes |
 | `out/p-n.out` | Magma output of a running task |
 | `done/SHARD/p-n.out` | Magma output of a finished task, with its `RESULT` line (`SHARD` = `p` div 1000) |
 | `failed/p-n.out` | output of a task that ended with an error (not retried automatically) |
+| `open/p-n.out` | output of a sparse screening (kind `N`) that did not certify its pair |
+| `crt/` | results of the proofs in characteristic 0 (kind `C`): functionals, exact checks; `p-n.na`: not applicable |
 | `logs/JOBID.log`, `logs/JOBID.tsv` | log of each worker; one line per finished task (time, memory, result) |
 | `slurm/JOBID.out` | SLURM output of each worker |
 
@@ -144,6 +147,41 @@ verification counts with its full predicted peak for its whole run, since its
 memory stays near it. A worker leaves a task that needs more than `alone_max`
 times the memory of its node to a worker on a node with more memory; by the
 model, a node with 128 GB takes verifications up to about p = 4.8·10^5.
+
+## Sparse screening (tasks of kind `N`)
+
+Beyond `p = 5·10^5` the modular symbols spaces of `search_pair.m` no longer fit
+into the memory of a node. With `sparse_from` > 0 a worker runs every task of
+kind `S` with `p >= sparse_from` as a task of kind `N`: screening with Najman's
+method (`../sparse/`, see its README), with memory `O(p)` (0.9 GB at `p =
+7·10^5`, 1.4 GB at `p = 10^6`) and about 3 and 5.5 minutes there on lipwig,
+32 tasks per node. It certifies most pairs as not strange (result in `done/`,
+as for `S`); a pair that it does not certify (strange, or `T_2` does not
+separate) goes to `open/` (`UNCERTIFIED <p, n, k, L, chi(2) = 1>`), and if `p
+<= magma_max_p` it is requeued and then runs as `S` (`search_pair.m`), since
+`open/` has it. In the queue files the task remains of kind `S` (also when a
+task of kind `N` is requeued), so workers with older code can run it as well.
+A task of kind `N` runs in a process group of its own, so that killing it also
+kills its steps. `status.py` and `audit.py` count the pairs in `open/`. The
+programs in `sparse/bin` are built with `sparse/build.sh` on a node (NTL in
+`~/sw/ntl`).
+
+## Proofs in characteristic 0 (tasks of kind `C`)
+
+With `crt_verify` set, a pair that the sparse screening did not certify is
+requeued as a task of kind `C` (in `crt.txt`, which workers with older code
+do not read): `sparse/crt_verify.py` proves its strangeness in characteristic
+0 by Chinese remaindering (see `../sparse/README.md`), with `crt_jobs` CPUs
+(memory and time: `crt_jobs` and `crt_time_factor` times those of a task of
+kind `N`); about 5 minutes with 16 CPUs at `p = 4.5·10^5`. Its result goes to
+`done/` like that of `search_pair.m` (`RESULT <p, n, [], [<n, strdim, orbit
+sizes, true>]>`, no candidate). A task of kind `V` (verification with Magma)
+is also run as kind `C`. If the proof is not applicable (`T_2` not cyclic on
+`S`, e.g. for `n = 2` with `chi(2) = 1`), `crt/p-n.na` records it, and the
+pair goes back to Magma: as `V` if it has a candidate, as `S` if `p <=
+magma_max_p`, otherwise it stays in `open/`. A worker does not run a task
+whose pair is in `done/` already. `sbatch cluster/crt.sbatch [p n ...]` runs
+`crt_verify.py` by hand for the pairs in `open/` (or those given).
 
 ## Calibration
 
