@@ -1,0 +1,174 @@
+# Strange characters mod p for all primes p < 1000000.
+# Derickx-Stoll, "Prime order torsion on elliptic curves over number fields, Part I: Asymptotics";
+# for the definitions see Definition 5.1 there: a newform f of weight 2 for Gamma_1(p) with
+# nontrivial character chi is strange if L(f, 1) = 0, and chi is strange if there is a strange
+# newform with character chi; strdim(p) is the number of strange newforms of level p.
+#
+# One line per prime p and order n of a strange character (the even characters mod p of a given
+# order n > 1, n | (p-1)/2, form one Galois orbit, and strangeness is Galois invariant):
+#   p       the prime
+#   order   the order n of the strange characters
+#   strdim  the number of strange newforms of level p whose character has order n
+#           (strdim(p) is the sum over the lines for p; only 8713 has two lines)
+#
+# Sources: p < 200000: Table 2 of the paper (TABLE2 in strange_primes.magma); 200000 < p < 1000000:
+# the search on the HPC cluster lipwig of the University of Bayreuth (DFG funding number 422127126),
+# October/November 2026, one job per pair (p, n) (see cluster/): with strange_primes.magma
+# (search_pair.m) for p < about 450000, and with the sparse method of sparse/ (after F. Najman) for
+# most pairs with larger p and for all pairs with p > 500000. Every candidate was verified in
+# characteristic 0, with strange_primes.magma or with sparse/crt_verify.py. The search covers all
+# pairs (p, n) and was complete for p < 1007089 on 2026-11-07, so the list is complete for p < 1000000.
+#
+# 149 strange characters at 148 strange primes. Whitespace-separated columns; lines starting
+# with # are comments.
+#
+#      p  order  strdim
+      61      6       2
+      97     12       4
+     101     10       4
+     181      6       2
+     193     12       4
+     409     12       4
+     421      6       2
+     733      6       2
+     853      6       2
+    1021     30       8
+    1777      3       2
+    1801      5       4
+    1861      6       6
+    2377     12       4
+    2917      6       2
+    3229      3       2
+    3793     12       4
+    4201      3       2
+    4733      7       6
+    5441     10       4
+    5821      6       2
+    5953      3       2
+    6133      6       2
+    6781      6       2
+    7477     14       6
+    8681     10       4
+    8713      4       4
+    8713     12       4
+   10093      6       2
+   11497      3       2
+   12941     10       4
+   14533      6       2
+   15061      6       4
+   15289     12       4
+   17041      3       2
+   17053      6       2
+   17257     12       4
+   18199      3       4
+   20341      6       2
+   22093      6       2
+   23017     12       4
+   23593     12       4
+   26161      3       2
+   26177      4       4
+   28201      3       2
+   29569      2       2
+   31033      3       2
+   31657      3       2
+   32497      3       2
+   35521      3       2
+   35537      4       4
+   36373      6       2
+   39313     12       4
+   41081      5       4
+   41131      3       2
+   41593     12       4
+   42793      3       2
+   48733      6       2
+   52561      3       2
+   52691      5       4
+   53113     12       4
+   53857     12       4
+   63313     12       4
+   63901      6       2
+   65171      5       4
+   65449     12       4
+   66973      6       2
+   68737     12       4
+   69061      6       2
+   69401      5       4
+   69457      4       4
+   73009     12       4
+   86113     12       4
+   86161      4       4
+   96289     12       4
+  105517      6       2
+  105751      5       4
+  109453      6       2
+  114553      3       2
+  114889     12       4
+  131203      3       4
+  133117      6       2
+  134257     12       4
+  139021      6       2
+  140401      3       2
+  151213      6       2
+  151429      6       2
+  155593     12       4
+  159073      3       2
+  161977     12       4
+  162529      3       2
+  173431      5       4
+  178897      3       2
+  192613      6       2
+  195817     12       4
+  199873      3       2
+  201493      6       2
+  218233      3       2
+  223621      6       2
+  242617     12       4
+  261013      6       2
+  265561      3       2
+  269713      3       2
+  271333      6       2
+  279949      6       2
+  299317      2       2
+  303493      6       2
+  304081      3       2
+  305377     12       4
+  308521      3       2
+  312313     12       4
+  316861      6       2
+  337453      6       2
+  357073      3       2
+  360769     12       4
+  373213      6       2
+  388897      3       2
+  409153      3       2
+  426301      6       2
+  452497     12       4
+  472993      3       2
+  494101      6       2
+  512921      5       4
+  518113      3       2
+  525193     12       4
+  534253      6       2
+  554089     12       4
+  560893      6       2
+  571321      3       2
+  572941      6       2
+  595801      3       2
+  606733      6       2
+  630577      3       2
+  647917      6       2
+  652753      3       2
+  670261      2       2
+  692161      3       2
+  696793     12       4
+  720697     12       4
+  737773      6       2
+  822541      6       2
+  839161      3       2
+  851821      6       2
+  866869      6       2
+  906481      3       2
+  908101      6       2
+  911917      6       2
+  961241     10       4
+  989917      6       2

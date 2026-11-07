@@ -48,6 +48,11 @@ for verifying computational assertions in some of my papers.
   or of non-strangeness when `T_2` alone does not separate the newforms);
   the cluster scripts run both (see [sparse/README.md](PrimeTorsion_Asymptotics/sparse/README.md)).
 
+* [strange_characters_1000000.txt](PrimeTorsion_Asymptotics/strange_characters_1000000.txt):
+  the result, all strange characters for the primes below 1000000 (Table 2
+  below 200000, the search beyond), one line per prime and character order
+  with the number of strange newforms.
+
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
   [lmfdb_ec_curvedata_even_rank.m](PrimeTorsion_Asymptotics/lmfdb_ec_curvedata_even_rank.m):
