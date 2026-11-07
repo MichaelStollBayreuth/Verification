@@ -51,7 +51,11 @@ for verifying computational assertions in some of my papers.
 * [strange_characters_1000000.txt](PrimeTorsion_Asymptotics/strange_characters_1000000.txt):
   the result, all strange characters for the primes below 1000000 (Table 2
   below 200000, the search beyond), one line per prime and character order
-  with the number of strange newforms.
+  with the number of strange newforms. The search between 200000 and 1000000
+  (October and November 2026) was performed using the lipwig-cluster of the
+  Bayreuth Centre for High Performance Computing at the University of Bayreuth
+  (https://www.bzhpc.uni-bayreuth.de), funded by the Deutsche
+  Forschungsgemeinschaft (DFG, German Research Foundation) – 422127126.
 
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),
   [lmfdb_mf_newforms_dim_le_6.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_dim_le_6.m),
