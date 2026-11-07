@@ -1,5 +1,5 @@
 // verify_char0.m: exact check of a CRT certificate of strangeness (crt_verify.py).
-//   magma -b P:=p N:=n Phi:=FILE verify_char0.m
+//   magma -b P:=p N:=n Phi:=FILE [Ops:="l1:c1,l2:c2,..."] verify_char0.m
 // FILE: "p n d ns" and then, for each of d functionals, ns lines with the phi(n) integer
 // coefficients (power basis of zeta_n) of its values on the generators of the 2-term quotient
 // of the Manin symbols (in the order of Sparse2Quotient, as in export_graph_fast.m), for the
@@ -12,6 +12,10 @@
 // every functional in W vanishes on the winding element {0, oo}. Then W lies in the annihilator
 // of K[T_2] {0, oo}; if T_2 is cyclic on S (checked by crt_verify.py mod q), the newforms
 // whose T_2-eigenvalues are the roots of g are strange, so strdim >= d phi(n).
+// With Ops (default "2:1"), the same for the operator A = c1 T_l1 + c2 T_l2 + ... in place of
+// T_2 (A cyclic on S, checked by crt_verify.py): W is stable under T_l* for all l in Ops (and
+// under T_2*), the characteristic polynomial of A* on W is coprime to the Eisenstein factor of
+// A, and W vanishes on {0, oo}; the T_l are given by the Heilbronn matrices of Merel.
 // The import path of core.m must point to the local Magma installation.
 SetQuitOnError(true); SetColumns(0);
 import "/opt/hpc-lipwig/public/group_software/math/vivaorg_10150005/magma/V2.30-1/package/Geometry/ModSym/core.m":
@@ -59,39 +63,51 @@ for j in [1..p+1] do
   end if;
 end for;
 printf "all %o 3-term relations hold (%o s)\n", nrel, Cputime(t0);
-// T_2: (phi o T_2)(g_i) = sum over the Heilbronn matrices h of phi(g_i h)
-HH := [A![1,0,0,2], A![2,0,0,1], A![2,1,0,1], A![1,0,1,2]];
-function tval(phi, i)
-  s := K!0;
-  for hh in HH do a := Apply(hh, sg[i]); s +:= val(phi, a[1], a[2]); end for;
-  return s;
-end function;
-TPhis := [[tval(phi, i) : i in [1..ns]] : phi in Phis];
-printf "T_2 applied (%o s)\n", Cputime(t0);
-// independence, stability, and the matrix of T_2* on W (on the pivot columns of an echelon form)
-B := Matrix(K, d, ns, &cat Phis); TB := Matrix(K, d, ns, &cat TPhis);
+// the operator A = sum of c_l T_l
+ops := [[StringToInteger(x) : x in Split(o, ":")] : o in Split(assigned Ops select Ops else "2:1", ",")];
+assert forall{o : o in ops | #o eq 2 and IsPrime(o[1]) and p mod o[1] ne 0};
+ells := Sort(SetToSequence({2} join {o[1] : o in ops}));
+// independence (on the pivot columns of an echelon form)
+B := Matrix(K, d, ns, &cat Phis);
 E := EchelonForm(B);
 assert Rank(E) eq d; // the functionals are linearly independent
 piv := [Min([i : i in [1..ns] | E[t, i] ne 0]) : t in [1..d]];
 Bp := HorizontalJoin([ColumnSubmatrixRange(B, j, j) : j in piv]);
-TBp := HorizontalJoin([ColumnSubmatrixRange(TB, j, j) : j in piv]);
-Mat := Solution(Bp, TBp); // Mat * B = TB on the pivot columns
-assert Mat*B eq TB; // W is stable under T_2*, and Mat is its matrix
+// T_l: (phi o T_l)(g_i) = sum over the Heilbronn matrices h of phi(g_i h)
+Mats := AssociativeArray();
+for l in ells do
+  HH := l eq 2 select [A![1,0,0,2], A![2,0,0,1], A![2,1,0,1], A![1,0,1,2]] else [A!h : h in HeilbronnMerel(l)];
+  tval := function(phi, i)
+    s := K!0;
+    for hh in HH do a := Apply(hh, sg[i]); s +:= val(phi, a[1], a[2]); end for;
+    return s;
+  end function;
+  TB := Matrix(K, d, ns, &cat[[tval(phi, i) : i in [1..ns]] : phi in Phis]);
+  TBp := HorizontalJoin([ColumnSubmatrixRange(TB, j, j) : j in piv]);
+  Mat := Solution(Bp, TBp); // Mat * B = TB on the pivot columns
+  assert Mat*B eq TB; // W is stable under T_l*, and Mat is its matrix
+  Mats[l] := Mat;
+  delete TB;
+  printf "T_%o applied, W is stable (%o s)\n", l, Cputime(t0);
+end for;
 PK<x> := PolynomialRing(K);
-g := PK!CharacteristicPolynomial(Mat);
-c2 := chi(2); Eis := (x - 1 - 2*c2)*(x - 2 - c2);
-assert Gcd(g, Eis) eq 1;
+g := PK!CharacteristicPolynomial(Mats[2]);
+MA := &+[o[2]*Mats[o[1]] : o in ops];
+gA := PK!CharacteristicPolynomial(MA);
+EisA := (x - &+[o[2]*(1 + o[1]*chi(o[1])) : o in ops])*(x - &+[o[2]*(o[1] + chi(o[1])) : o in ops]);
+assert Gcd(gA, EisA) eq 1;
 // the winding element {0, oo} = Manin symbol (0:1)
 ind := Position(pp, Parent(pp[1])![0,1]); assert ind gt 0;
 for phi in Phis do assert val(phi, K!1, ind) eq 0; end for;
-printf "W is T_2-stable, cuspidal, and vanishes on {0, oo} (%o s)\n", Cputime(t0);
+printf "W is stable under T_l* for l in %o, cuspidal, and vanishes on {0, oo} (%o s)\n", ells, Cputime(t0);
 // (one line each: the characteristic polynomial of T_2 on W over K = Q(z), z = zeta_n, and the
 // minimal polynomials over Q of the eigenvalues a_2 of the strange newforms)
-fg := Factorization(g);
+fg := Factorization(gA);
 mq := {AbsoluteMinimalPolynomial(r[1]) : r in Roots(g, SplittingField(g))};
-printf "CHAR0_VERIFIED <%o, %o, %o> T_2 on W: %o; a_2 over Q: %o\n", p, n, d*dK,
-       Sprint(g), Join([Sprint(f) : f in mq], ", ");
+printf "CHAR0_VERIFIED <%o, %o, %o> T_2 on W: %o;%o a_2 over Q: %o\n", p, n, d*dK, Sprint(g),
+       ops eq [[2, 1]] select "" else " A = " cat Ops cat " on W: " cat Sprint(gA) cat ";",
+       Join([Sprint(f) : f in mq], ", ");
 // (as verify_candidate in strange_primes.magma: <n, strdim, sizes of the Galois orbits of
-// strange newforms, true>; T_2 is cyclic, so the factors of g belong to the Galois orbits)
+// strange newforms, true>; A is cyclic, so the factors of gA belong to the Galois orbits)
 printf "CHAR0_RESULT <%o, %o, %o, true>\n", n, d*dK, Sort([dK*Degree(f[1]) : f in fg]);
 quit;

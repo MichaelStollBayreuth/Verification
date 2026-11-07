@@ -51,8 +51,9 @@ further trials of `strange_primes.magma` and, if strange, a proof.
 The large files (about 55 MB at `p = 10^6`) go to the node-local `/tmp` (or
 `$TMPDIR`) and are removed at the end, also when the script is terminated.
 Changes to Najman's files: the two paths in `export_graph_fast.m` (and its
-variant `export_graph_crt.m`), two environment variables in `prepare_graph.cpp`
-(`STRANGE_SEED`, `STRANGE_RANDOM_START`; default behaviour unchanged), and in
+variant `export_graph_crt.m`), three environment variables in `prepare_graph.cpp`
+(`STRANGE_SEED`, `STRANGE_RANDOM_START`, `STRANGE_EIS`; default behavior
+unchanged), and in
 `verify_graph.py` and `verify_free.py` `hashlib.file_digest` (Python 3.11)
 replaced by `hashlib.sha256` (lipwig has Python 3.9).
 
@@ -61,32 +62,44 @@ replaced by `hashlib.sha256` (lipwig has Python 3.9).
 For an uncertified pair, a multimodular computation in characteristic 0 that
 needs no modular symbols space either (memory `O(p)`):
 
-1. Cyclicity: the Krylov sequence mod `q` of a random element of `S`
-   (`STRANGE_RANDOM_START`) has linear complexity `k`; then `T_2` is cyclic on
-   `S`, mod `q` and over `K = Q(zeta_n)`, so all its eigenspaces have dimension 1.
+1. Cyclicity: an operator `A` in the Hecke algebra whose Krylov sequence of a
+   random element of `S` (`STRANGE_RANDOM_START`) has linear complexity `k`; then
+   `A` is cyclic on `S`, mod `q` and over `K = Q(zeta_n)`, and the Hecke algebra
+   acts on `S` through `K[A]`. `A = T_2` if this holds mod `q` or mod the first
+   prime `l` of 2.; otherwise the first operator of the list `OPS` (`T_2 + T_3`,
+   `T_2 - T_3`, `T_2 + 2T_3`, `T_3`, `T_2 + T_3 + T_5`, ...) that is cyclic mod `l`
+   (`--ops "2:1,3:1"`: only this one). `export_graph_crt.m` builds `A` from the
+   Merel–Heilbronn matrices (`Ops:=...`; Magma's `HeilbronnMerel`, checked against
+   `HeckeOperator` for `T_2`, `T_3`, `T_5`) and prints its eigenvalues `c_1, c_2` on
+   the Eisenstein series, `sum c_l (1 + l chi(l))` and `sum c_l (l + chi(l))`;
+   `prepare_graph` takes them from `STRANGE_EIS` (default: those of `T_2`).
 2. For primes `l = 1 mod n` below `2^23.5` and each embedding `zeta_n -> z` of `K`
    into `F_l` (`export_graph_crt.m`, `chi(PrimitiveRoot(p)) = z`), and `d = k - L`
-   random functionals `u`: `m` the minimal polynomial of `u(T_2^i e')` (from
-   `finish_L`), and `phi = m(T_2*) (T_2* - c_1)(T_2* - c_2) u`, `c_1 = 1 + 2 chi(2)`,
-   `c_2 = 2 + chi(2)` (`project`): it vanishes on `F_l[T_2] e'` and on the
-   Eisenstein part. These span the part `W` of the dual of `S` that annihilates
-   `F_l[T_2] e'` (dimension `d`); its reduced echelon basis is canonical.
+   random functionals `u`: `m` the minimal polynomial of `u(A^i e')` (from
+   `finish_L`), and `phi = m(A*) (A* - c_1)(A* - c_2) u` (`project`): it vanishes on
+   `F_l[A] e'` and on the Eisenstein part. These span the part `W` of the dual of
+   `S` that annihilates `F_l[A] e'` (dimension `d`); its reduced echelon basis is
+   canonical. If `L = k` for the first prime, the pair is not strange
+   (`CRT_NOT_STRANGE`).
 3. Chinese remaindering (all embeddings of each `l` give the coefficients in the
    power basis of `zeta_n`) and rational reconstruction over `K`.
 4. `verify_char0.m` checks the result exactly over `K` (all in time `O(p)`): the
    functionals vanish on all 3-term relations (so they are functionals on the
    modular symbols), are linearly independent, span a space `W` stable under the
-   dual of `T_2` whose characteristic polynomial is coprime to the Eisenstein
-   factor (so `W` lies in the dual of `S`), and vanish on `{0, oo}`.
+   duals of `T_l` for the primes `l` of `A` and of `T_2`, on which the
+   characteristic polynomial of `A*` is coprime to the Eisenstein factor of `A` (so
+   `W` lies in the dual of `S`), and vanish on `{0, oo}`.
 
-With 1., every newform whose `T_2`-eigenvalue is a root of the characteristic
-polynomial of `T_2` on `W` is strange, so `strdim >= d phi(n)`; each prime gives
-`L <= dim K[T_2] e'`, so `strdim <= (k - L) phi(n)`. The output is
+With 1., every newform whose `A`-eigenvalue is a root of the characteristic
+polynomial of `A` on `W` is strange, so `strdim >= d phi(n)`; each prime gives
+`L <= dim K[A] e'`, so `strdim <= (k - L) phi(n)`. The output is
 `STRANGE <p, n>: strdim ...` and the line `CHAR0_VERIFIED <p, n, strdim> ...` of
 `verify_char0.m`, with the minimal polynomials over `Q` of the `a_2` of the
-strange newforms. Not covered: `T_2` not cyclic on `S` (in particular `n = 2`
-with `chi(2) = 1`, where every eigenvalue is double); then the output is
-`CRT_NOT_APPLICABLE`.
+strange newforms (from `T_2` on `W`). If no operator of `OPS` is cyclic, the
+output is `CRT_NOT_APPLICABLE`. Example: for 746497/3, `T_2` has a repeated
+eigenvalue on `S` (so the sparse screening gives `L = k - 1`), `T_2 + T_3` is
+cyclic, and `L = k`: not strange; 8713/4 (two strange newforms with `a_2 = -1`)
+is proved strange with `T_2 + T_3`.
 
 The entries of the reconstructed functionals are tiny (at most 4 bits for all
 pairs tested), so a handful of primes suffices. Tested on xh (November 2026):

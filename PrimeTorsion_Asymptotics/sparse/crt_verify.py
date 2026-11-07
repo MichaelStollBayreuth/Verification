@@ -2,22 +2,25 @@
 """Proof of strangeness of a pair (p, n) by a multimodular computation in characteristic 0
 (see README.md), for pairs that sparse_pair.py did not certify:
 
-  python3 crt_verify.py P N [--magma MAGMA] [--jobs J] [--tmp DIR] [--out DIR]
+  python3 crt_verify.py P N [--magma MAGMA] [--jobs J] [--tmp DIR] [--out DIR] [--ops OPS]
 
-1. Cyclicity of T_2 on S: the Krylov sequence mod q of a random element of S has linear
-   complexity k = dim S (then T_2 is cyclic on S over Q(zeta_n) as well).
+1. An operator A in the Hecke algebra that is cyclic on S: the Krylov sequence of a random
+   element of S has linear complexity k = dim S (then A is cyclic on S over Q(zeta_n) as well,
+   and the Hecke algebra acts on S through Q(zeta_n)[A]). A = T_2 if T_2 is cyclic mod q (or
+   mod the first prime l of 2.), otherwise the first operator of OPS below that is cyclic mod l
+   (A = c_1 T_l1 + c_2 T_l2 + ..., written "l1:c1,l2:c2,..."; --ops: only this operator).
 2. For primes l = 1 mod n below 2^23.5 and each embedding zeta_n -> z of Q(zeta_n) into F_l
    (chi(PrimitiveRoot(p)) = z), with d random functionals u: the minimal polynomial m of the
-   sequence u(T_2^i e') (linear complexity L; d = k - L), and phi = m(T_2*) u, which lies in
-   the annihilator W of F_l[T_2] e' (dimension d). The d functionals are brought into reduced
+   sequence u(A^i e') (linear complexity L; d = k - L), and phi = m(A*) u, which lies in
+   the annihilator W of F_l[A] e' (dimension d). The d functionals are brought into reduced
    echelon form mod l.
 3. Chinese remaindering over the primes l (all embeddings of each l give the coefficients in
    the power basis of zeta_n mod l) and rational reconstruction of the echelon basis of W over
    Q(zeta_n), until the reconstruction is stable.
 4. verify_char0.m checks the result exactly over Q(zeta_n): W is a space of functionals on the
-   modular symbols, stable under T_2*, cuspidal, and vanishing on {0, oo}. With 1. this proves
-   strdim >= d phi(n); each l gives L <= dim Q(zeta_n)[T_2] e', so strdim <= k - L, and the
-   strange dimension is d phi(n).
+   modular symbols, stable under T_l* for the primes l of A (and T_2*), cuspidal, and vanishing
+   on {0, oo}. With 1. this proves strdim >= d phi(n); each l gives L <= dim Q(zeta_n)[A] e',
+   so strdim <= k - L, and the strange dimension is d phi(n).
 Runs in the directory of strange_primes.magma (like sparse_pair.py).
 """
 
@@ -36,6 +39,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 B = lambda name: os.path.join(HERE, "bin", name)
 S = lambda name: os.path.join(HERE, name)
 LIMIT = int(2 ** 23.5)  # (F_l arithmetic in Magma is fast for l^2 < 2^47)
+# operators tried in turn if T_2 is not cyclic on S (see 1. above)
+OPS = ["2:1", "2:1,3:1", "2:1,3:-1", "2:1,3:2", "3:1", "2:1,3:1,5:1", "2:1,3:-1,5:2", "2:1,5:1,7:1"]
+
+
+def op_name(ops):
+    """"2:1,3:-1" -> "T_2 - T_3"."""
+    out = ""
+    for o in ops.split(","):
+        l, c = map(int, o.split(":"))
+        out += ((" - " if out else "-") if c < 0 else " + " if out else "") + ("" if abs(c) == 1 else "%d " % abs(c)) + "T_%d" % l
+    return out
 
 
 def log(msg):
@@ -104,18 +118,20 @@ def field(out, key):
     return int(m[-1])
 
 
-def one_run(a, W, l, z, seeds, random_start=False):
-    """One prime l and embedding z: (k, [(L, a, phi) for each seed])."""
+def one_run(a, W, l, z, seeds, random_start=False, ops="2:1"):
+    """One prime l and embedding z, operator ops: (k, [(L, a, phi) for each seed])."""
     os.makedirs(W, exist_ok=True)
     lg = os.path.join(W, "log")
     f = lambda name: os.path.join(W, name)
-    args = [a.magma, "-b", "P:=%d" % a.p, "OrderToTest:=%d" % a.n, "GraphOut:=" + f("graph.txt")]
+    args = [a.magma, "-b", "P:=%d" % a.p, "OrderToTest:=%d" % a.n, "GraphOut:=" + f("graph.txt"),
+            "Ops:=" + ops]
     if l:
         args += ["Q:=%d" % l, "Z:=%d" % z]
-    run(args + [S("export_graph_crt.m")], lg)
+    out = run(args + [S("export_graph_crt.m")], lg)
+    eis = (field(out, "eis1"), field(out, "eis2"))  # the eigenvalues of A on the Eisenstein series
     res, k = [], None
     for s in seeds:
-        env = dict(os.environ, STRANGE_SEED=str(s))
+        env = dict(os.environ, STRANGE_SEED=str(s), STRANGE_EIS="%d %d" % eis)
         if random_start:
             env["STRANGE_RANDOM_START"] = "1"
         out = run([B("prepare_graph"), f("graph.txt"), f("prepared.txt"), f("rank.json")], lg, env)
@@ -124,17 +140,16 @@ def one_run(a, W, l, z, seeds, random_start=False):
         run([B("krylov_packed"), f("free.txt"), f("raw.m")], lg)
         out = run([B("finish_L"), f("raw.m"), f("poly.txt")], lg)
         L = field(out, "complexity")
-        if random_start:
+        if random_start or L == k:  # (L = k: m(A*) u = 0, and the pair is not strange)
             res.append((L, None, None))
             continue
         # m(x) (x - c_1)(x - c_2): phi also vanishes on the Eisenstein part
         with open(f("graph.txt")) as g:
-            h = list(map(int, g.readline().split()))
-        q, chi2 = h[0], h[6]
+            q = int(g.readline().split()[0])
         with open(f("poly.txt")) as g:
             w = list(map(int, g.read().split()))
         C = w[1:]
-        for c in ((1 + 2 * chi2) % q, (2 + chi2) % q):
+        for c in eis:
             C = [(x - c * y) % q for x, y in zip(C + [0], [0] + C)]
         with open(f("poly2.txt"), "w") as g:
             g.write("%d %s\n" % (len(C) - 1, " ".join(map(str, C))))
@@ -252,6 +267,7 @@ def main():
     ap.add_argument("--tmp", default=os.environ.get("TMPDIR") or "/tmp")
     ap.add_argument("--out", default=".")
     ap.add_argument("--max-primes", type=int, default=200)
+    ap.add_argument("--ops", help="the operator A (default: T_2, otherwise the first cyclic one of OPS)")
     a = ap.parse_args()
     p, n = a.p, a.n
     dK = sum(1 for e in range(1, n + 1) if math.gcd(e, n) == 1)
@@ -260,14 +276,33 @@ def main():
     t0 = time.time()
     pool = concurrent.futures.ThreadPoolExecutor(a.jobs)
     try:
-        # 1. cyclicity of T_2 on S (mod q = aux_prime(p), random start vector)
-        k, res = one_run(a, os.path.join(T, "cyc"), None, None, [0], random_start=True)
+        # 1. an operator A that is cyclic on S (random start vector): T_2 mod q = aux_prime(p)
+        ops = a.ops or OPS[0]
+        k, res = one_run(a, os.path.join(T, "cyc"), None, None, [0], random_start=True, ops=ops)
         Lv = res[0][0]
-        log("p = %d, n = %d: k = %d; random element of S: linear complexity %d%s"
-            % (p, n, k, Lv, "" if Lv == k else " -- T_2 is not cyclic on S (mod q)"))
+        log("p = %d, n = %d: k = %d; A = %s, random element of S: linear complexity %d%s"
+            % (p, n, k, op_name(ops), Lv, "" if Lv == k else " -- A is not cyclic on S (mod q)"))
         if Lv != k:
-            print("CRT_NOT_APPLICABLE <%d, %d>: T_2 not cyclic on S mod q" % (p, n))
+            # a repeated eigenvalue mod q may be an accident of q: cyclicity mod one prime
+            # l = 1 mod n (one embedding; the others are Galois conjugate) suffices as well;
+            # if T_2 is not cyclic mod l either, the operators of OPS in turn
+            l = next(primes_1_mod(n, LIMIT))
+            z = prim_roots_of_unity(n, l)[0]
+            for ops in ([a.ops] if a.ops else OPS):
+                _, res = one_run(a, os.path.join(T, "cyc-%d-%d" % (l, OPS.index(ops) if ops in OPS else 99)),
+                                 l, z, [0], random_start=True, ops=ops)
+                log("l = %d, z = %d: A = %s, random element of S: linear complexity %d"
+                    % (l, z, op_name(ops), res[0][0]))
+                if res[0][0] == k:
+                    Lv = k
+                    break
+        if Lv != k:
+            print("CRT_NOT_APPLICABLE <%d, %d>: %s not cyclic on S mod q and mod %d"
+                  % (p, n, op_name(a.ops) if a.ops else "no operator of %s" % OPS, l))
             return
+        A = op_name(ops)
+        if ops != OPS[0]:
+            log("A = %s is cyclic on S" % A)
         # 2. a first prime: L and d
         primes = primes_1_mod(n, LIMIT)
         data, Lmax, d, piv0, last = {}, -1, None, None, None
@@ -275,7 +310,7 @@ def main():
         while len(data) < a.max_primes:
             ls = [next(primes) for _ in range(batch if d is not None else 1)]
             futs = {(l, z): pool.submit(one_run, a, os.path.join(T, "%d-%d" % (l, z)), l, z,
-                                        list(range(d if d else 1)))
+                                        list(range(d if d else 1)), ops=ops)
                     for l in ls for z in prim_roots_of_unity(n, l)}
             for (l, z), fu in futs.items():
                 try:
@@ -334,15 +369,15 @@ def main():
                         f.write(" ".join(str(x * (D // y)) for x, y in tup) + "\n")
             height = max(abs(x * (D // y)).bit_length() for row, D in zip(rec, den) for tup in row for x, y in tup)
             log("candidate written to %s (max %d bits); exact check" % (fn, height))
-            out = run([a.magma, "-b", "P:=%d" % p, "N:=%d" % n, "Phi:=" + fn, S("verify_char0.m")],
-                      os.path.join(a.out, "crt-%d-%d.log" % (p, n)))
-            m = re.search(r"^CHAR0_VERIFIED .*$", out, re.M)
+            out = run([a.magma, "-b", "P:=%d" % p, "N:=%d" % n, "Phi:=" + fn, "Ops:=" + ops,
+                       S("verify_char0.m")], os.path.join(a.out, "crt-%d-%d.log" % (p, n)))
+            m = re.findall(r"^CHAR0_VERIFIED .*$", out, re.M)  # (the log may have earlier runs)
             if m:
-                print("STRANGE <%d, %d>: strdim %d (k = %d, L = %d, T_2 cyclic; %d primes, %d bits, "
-                      "max height %d bits; %.0f s)" % (p, n, d * dK, k, Lmax, len(data), M.bit_length(),
+                print("STRANGE <%d, %d>: strdim %d (k = %d, L = %d, %s cyclic; %d primes, %d bits, "
+                      "max height %d bits; %.0f s)" % (p, n, d * dK, k, Lmax, A, len(data), M.bit_length(),
                                                        height, time.time() - t0))
-                print(m.group(0))
-                final(p, n, re.search(r"^CHAR0_RESULT (<.*>)$", out, re.M).group(1))
+                print(m[-1])
+                final(p, n, re.findall(r"^CHAR0_RESULT (<.*>)$", out, re.M)[-1])
                 return
             if rec == last:
                 print("CRT_FAILED <%d, %d>: the exact check fails for a stable reconstruction" % (p, n))

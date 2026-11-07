@@ -1,7 +1,9 @@
 // Najman, github.com/F-Najman/Sd, degree22/optimization/prepare_graph.cpp (MIT, see LICENSE-Najman).
-// Changed (for crt_verify.py; the default behaviour is unchanged): with STRANGE_SEED=s in the
+// Changed (for crt_verify.py; the default behavior is unchanged): with STRANGE_SEED=s in the
 // environment the random functional u depends on s, and with STRANGE_RANDOM_START set the start
-// vector is random instead of {0, oo} (then e' is a random element of S: cyclicity of T_2).
+// vector is random instead of {0, oo} (then e' is a random element of S: cyclicity of T_2), and
+// STRANGE_EIS="c1 c2" gives the eigenvalues of the exported operator on the two Eisenstein series
+// (default 1 + 2 chi(2), 2 + chi(2): the operator T_2).
 #include <algorithm>
 #include <cstdlib>
 #include <cassert>
@@ -58,7 +60,7 @@ int main(int argc,char**argv){
  vector<size_t>off(ns+1,0);vector<uint32_t>sr(nnz),ci(nnz),va(nnz);size_t count=0;
  for(size_t i=0;i<ns;i++){size_t z;in>>z;assert(z<=ns);for(size_t j=0;j<z;j++){uint32_t c,a;in>>c>>a;assert(c<ns&&a&&a<q&&count<nnz);sr[count]=i;ci[count]=c;va[count]=a;off[c+1]++;count++;}}string extra;assert(in&&count==nnz&&!(in>>extra));partial_sum(off.begin(),off.end(),off.begin());auto pos=off;vector<uint32_t>src(nnz),a(nnz);for(size_t j=0;j<nnz;j++){auto t=pos[ci[j]]++;src[t]=sr[j];a[t]=va[j];}
  auto act=[&](const vector<uint64_t>&v){vector<uint64_t>w(ns);for(size_t j=0;j<ns;j++){uint64_t z=0;for(size_t lo=off[j];lo<off[j+1];lo+=block){uint64_t part=0;for(size_t h=lo;h<min(off[j+1],lo+block);h++)part+=v[src[h]]*a[h];z=(z+part%q)%q;}w[j]=z;}return w;};
- vector<uint64_t>v(ns,0);if(getenv("STRANGE_RANDOM_START")){for(auto&x:v)x=rng()%q;}else v[eidx]=ec;for(uint64_t c:{(2*chi2+1)%q,(chi2+2)%q}){auto w=act(v);for(size_t j=0;j<ns;j++)w[j]=(w[j]+q-mul(c,v[j]))%q;v.swap(w);}
+ vector<uint64_t>v(ns,0);if(getenv("STRANGE_RANDOM_START")){for(auto&x:v)x=rng()%q;}else v[eidx]=ec;vector<uint64_t>eis{(2*chi2+1)%q,(chi2+2)%q};if(getenv("STRANGE_EIS")){char*e;eis[0]=strtoull(getenv("STRANGE_EIS"),&e,10)%q;eis[1]=strtoull(e,nullptr,10)%q;}for(uint64_t c:eis){auto w=act(v);for(size_t j=0;j<ns;j++)w[j]=(w[j]+q-mul(c,v[j]))%q;v.swap(w);}
  ofstream out(argv[2]);assert(out);out<<q<<' '<<ns<<' '<<k<<' '<<nnz<<'\n';for(auto x:v)out<<x<<' ';out<<'\n';for(auto x:u)out<<x<<' ';out<<'\n';count=0;
  for(size_t i=0;i<ns;i++){size_t begin=count;while(count<nnz&&sr[count]==i)count++;out<<count-begin<<' ';for(size_t j=begin;j<count;j++)out<<ci[j]<<' '<<va[j]<<' ';out<<'\n';}assert(count==nnz);
  auto w=v;out<<64<<' ';for(size_t step=0;step<64;step++){uint64_t z=0;for(size_t lo=0;lo<ns;lo+=block){uint64_t part=0;for(size_t j=lo;j<min(ns,lo+block);j++)part+=w[j]*u[j];z=(z+part%q)%q;}out<<z<<' ';w=act(w);}out<<'\n';out.close();

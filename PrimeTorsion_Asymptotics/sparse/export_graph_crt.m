@@ -1,7 +1,9 @@
 // export_graph_fast.m (see there) for crt_verify.py: optional arguments Q:=q (the prime, default
 // aux_prime(p)) and Z:=z (the value of chi at the primitive root PrimitiveRoot(p) in F_q, an
 // element of order n; default: as in export_graph_fast.m), so that each run belongs to a known
-// embedding of Q(zeta_n) into F_q.
+// embedding of Q(zeta_n) into F_q; Ops:="l1:c1,l2:c2,..." (default "2:1") exports the operator
+// A = c1 T_l1 + c2 T_l2 + ... (Heilbronn matrices of Merel, primes l not dividing p) instead of
+// T_2 and prints its eigenvalues on the two Eisenstein series (S20_EISENSTEIN eis1=... eis2=...).
 SetQuitOnError(true);SetColumns(0);SetMemoryLimit(12*10^9);SetSeed(20261029);SequenceOut:="unused_export_only";
 load "strange_primes.magma";
 import "/opt/hpc-lipwig/public/group_software/math/vivaorg_10150005/magma/V2.30-1/package/Geometry/ModSym/core.m":ManinSymbolList,ManSym2termQuotient,ManinSymbolApply,Sparse2Quotient;
@@ -27,10 +29,13 @@ for j in[1..p+1]do
 end for;
 for row in rels do for term in row do counts[term[1]]+:=1;end for;end for;
 print "S20_GRAPH_RELATION_STRUCTURE",#rels,Max(counts),{*v:v in counts*},Cputime(tt);assert Max(counts)le 2;
-A:=MatrixAlgebra(Integers(p),2);HH:=[A![1,0,0,2],A![2,0,0,1],A![2,1,0,1],A![1,0,1,2]];R:=SparseMatrix(F,ns,ns);
-for i in[1..ns]do for h in HH do for term in[Apply(h,sg[i])]do c,j:=Explode(term);a:=sq[j];if a ne 0 then R[i,a]+:=c*sc[j];end if;end for;end for;end for;
+ops:=[[StringToInteger(x):x in Split(o,":")]:o in Split(assigned Ops select Ops else "2:1",",")];assert forall{o:o in ops|#o eq 2 and IsPrime(o[1])and p mod o[1]ne 0};
+A:=MatrixAlgebra(Integers(p),2);R:=SparseMatrix(F,ns,ns);
+for o in ops do HH:=o[1]eq 2 select[A![1,0,0,2],A![2,0,0,1],A![2,1,0,1],A![1,0,1,2]]else[A!h:h in HeilbronnMerel(o[1])];
+for i in[1..ns]do for h in HH do for term in[Apply(h,sg[i])]do c,j:=Explode(term);a:=sq[j];if a ne 0 then R[i,a]+:=o[2]*c*sc[j];end if;end for;end for;end for;end for;
+eis:=[&+[F|o[2]*(1+o[1]*chi(o[1])):o in ops],&+[F|o[2]*(o[1]+chi(o[1])):o in ops]];printf "S20_EISENSTEIN ops=%o eis1=%o eis2=%o\n",#ops,Integers()!eis[1],Integers()!eis[2];
 pp:=ml`p1list;ind:=Position(pp,Parent(pp[1])![0,1]);assert ind gt 0 and sq[ind]gt 0;
 PrintFile(GraphOut,Sprintf("%o %o %o %o %o %o %o %o %o",q,p,n,ns,#rels,NNZEntries(R),Integers()!chi(2),sq[ind]-1,Integers()!sc[ind]):Overwrite:=true);
 for row in rels do PrintFile(GraphOut,IntegerToString(#row)cat " "cat &cat[IntegerToString(t[1]-1)cat " "cat IntegerToString(t[2])cat " ":t in row]);end for;
-for i in[1..ns]do supp:=Support(R,i);PrintFile(GraphOut,IntegerToString(#supp)cat " "cat &cat[IntegerToString(j-1)cat " "cat IntegerToString(Integers()!R[i,j])cat " ":j in supp]);end for;
+for i in[1..ns]do supp:=Support(R,i);PrintFile(GraphOut,IntegerToString(#supp)cat " "cat &cat[Strings()|IntegerToString(j-1)cat " "cat IntegerToString(Integers()!R[i,j])cat " ":j in supp]);end for;
 printf "S20_MANIN_GRAPH_EXPORT_COMPLETE p=%o order=%o q=%o generators=%o relations=%o nnz=%o max_column_degree=%o seconds=%o\n",p,n,q,ns,#rels,NNZEntries(R),Max(counts),Cputime(tt);quit;

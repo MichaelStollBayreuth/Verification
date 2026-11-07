@@ -43,8 +43,9 @@ for verifying computational assertions in some of my papers.
 * [sparse/](PrimeTorsion_Asymptotics/sparse/):
   the search from about 450000 on, with memory linear in p: screening with
   Filip Najman's sparse method (from https://github.com/F-Najman/Sd, MIT
-  license), which certifies most pairs as not strange, and a proof of
-  strangeness in characteristic 0 by Chinese remaindering for the others;
+  license), which certifies most pairs as not strange, and a proof in
+  characteristic 0 by Chinese remaindering for the others (of strangeness,
+  or of non-strangeness when `T_2` alone does not separate the newforms);
   the cluster scripts run both (see [sparse/README.md](PrimeTorsion_Asymptotics/sparse/README.md)).
 
 * [lmfdb_mf_newforms_rk_ge_2.m](PrimeTorsion_Asymptotics/lmfdb_mf_newforms_rk_ge_2.m),

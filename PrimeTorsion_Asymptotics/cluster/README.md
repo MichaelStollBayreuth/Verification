@@ -171,21 +171,23 @@ programs in `sparse/bin` are built with `sparse/build.sh` on a node (NTL in
 With `crt_verify` set, a pair that the sparse screening did not certify is
 requeued as a task of kind `C` (in `crt.txt`, which workers with older code
 do not read): `sparse/crt_verify.py` proves its strangeness in characteristic
-0 by Chinese remaindering (see `../sparse/README.md`), with `crt_jobs` CPUs
-(memory and time: `crt_jobs` and `crt_time_factor` times those of a task of
-kind `N`); about 5 minutes with 16 CPUs at `p = 4.5·10^5`. Its result goes to
-`done/` like that of `search_pair.m` (`RESULT <p, n, [], [<n, strdim, orbit
-sizes, true>]>`, no candidate). A task of kind `V` (verification with Magma)
-is also run as kind `C`. If the proof is not applicable (`T_2` not cyclic on
-`S`, e.g. for `n = 2` with `chi(2) = 1`), `crt/p-n.na` records it, and the
-pair goes back to Magma: as `V` if it has a candidate, as `S` if `p <=
-magma_max_p`, otherwise it stays in `open/`. A worker does not run a task
-whose pair is in `done/` already, and with `crt_verify` it runs a task of kind
-`S` whose pair is in `open/` as kind `C`. `keep_workers.sh` runs
-`sweep_open.py`, which requeues the pairs in `open/` that nobody takes care
-of (left there by workers whose code does not know kind `C`) as tasks of kind
-`C` (log in `queue/sweep.log`). `sbatch cluster/crt.sbatch [p n ...]` runs
-`crt_verify.py` by hand for the pairs in `open/` (or those given).
+0 by Chinese remaindering, or its non-strangeness if `T_2` alone does not
+separate the newforms, as for 746497/3 (see `../sparse/README.md`), with
+`crt_jobs` CPUs (memory and time: `crt_jobs` and `crt_time_factor` times
+those of a task of kind `N`); about 5 minutes with 16 CPUs at `p = 4.5·10^5`.
+Its result goes to `done/` like that of `search_pair.m` (`RESULT <p, n, [],
+[<n, strdim, orbit sizes, true>]>`, no candidate). A task of kind `V`
+(verification with Magma) is also run as kind `C`. If the proof is not
+applicable (none of the operators `T_2`, `T_2 + T_3`, ... of `crt_verify.py`
+is cyclic on `S`), `crt/p-n.na` records it, and the pair goes back to Magma:
+as `V` if it has a candidate, as `S` if `p <= magma_max_p`, otherwise it
+stays in `open/`. A worker does not run a task whose pair is in `done/`
+already, and with `crt_verify` it runs a task of kind `S` whose pair is in
+`open/` as kind `C`. `keep_workers.sh` runs `sweep_open.py`, which requeues
+the pairs in `open/` that nobody takes care of (left there by workers whose
+code does not know kind `C`) as tasks of kind `C` (log in `queue/sweep.log`).
+`sbatch cluster/crt.sbatch [p n ...]` runs `crt_verify.py` by hand for the
+pairs in `open/` (or those given).
 
 ## Calibration
 
