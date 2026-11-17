@@ -125,13 +125,24 @@ contains Magma programs related to the paper.
 
 ([arXiv](arxiv.org/abs/1912.05893))
 
+The files were revised in 2026 for the revised version of the paper, whose Assumption (A3)
+replaces the one of the first version; the code of 2019 is in the history of this repository.
+
 * [SelChabDyn.magma](SelChabDyn/SelChabDyn.magma):
   this implements the algorithm described in Section 2 for curves of the form
   $y^2 = x^{2g+1} + h(x)^2$ with $h$ of degree at most $g$, integral coefficients
-  and such that $h(0)$ is odd and $h(1)$ is even.
+  and such that $h(0)$ is odd and $h(1)$ is even. It checks Assumption (A3) and
+  returns, besides the result, a code saying which step decided it.
 
 * [SelChabDyn-examples.magma](SelChabDyn/SelChabDyn-examples.magma):
   this verifies the results in Section 3.
+
+* [SelChabDyn-Cg.magma](SelChabDyn/SelChabDyn-Cg.magma):
+  this verifies the results on the curves $y^2 = x^{2g+1} + (x+1)^2$, $g \le 12$, in Section 4.
+
+* [tables](SelChabDyn/tables/):
+  this computes the tables at the end of Section 4 and contains the records of our runs;
+  see the README there.
 
 ## Diagonal genus 5 curves, elliptic curves over ${\mathbb Q}(t)$, and diophantine quintuples
 

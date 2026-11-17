@@ -1,0 +1,32 @@
+// Magma computations for the curves  C_g : y^2 = x^(2g+1) + (x+1)^2,  g = 1, ..., 12,
+// of Section 4 of "An application of `Selmer group Chabauty' to arithmetic dynamics":
+// the first table and the proposition on C_g(Q).
+//
+// Run as  magma SelChabDyn-Cg.magma  from this directory. The class groups are computed
+// unconditionally for g <= 10 and under GRH for g = 11, 12, as in the paper. Most of the time
+// goes into the class group of the field of degree 21 for g = 10: about 25 minutes of the 27 that
+// the script took on our laptop with Magma V2.30-1.
+
+// Load the general code.
+load "SelChabDyn.magma";
+
+P<x> := PolynomialRing(Rationals());
+
+// The table: dim Sel_2(J) and whether the method proves C_g(Q) = C_g(Q)_odd.
+dims := [0, 1, 0, 1, 0, 2, 1, 1, 2, 1, 0, 2];
+success := [true, false, true, true, true, true, true, true, true, true, true, true];
+for g := 1 to 12 do
+  if g eq 11 then SetClassGroupBounds("GRH"); end if;
+  t0 := Cputime();
+  flag, d, info := SelChab(g, x + 1);
+  printf "g = %o: dim Sel = %o, %o (code %o, dim of the image in F_2^g %o), %o s\n",
+         g, d, flag select "+" else "-", info[1], info[3], Cputime(t0);
+  assert d eq dims[g] and flag eq success[g];
+end for;
+
+// g = 2: the method fails, and C_2 has the further points (12, +-499). Chabauty's method with the
+// Mordell-Weil sieve (RationalPointsGenus2) shows that these are all.
+C2 := HyperellipticCurve(x^5 + (x + 1)^2);
+assert {Eltseq(pt) : pt in RationalPointsGenus2(C2)}
+         eq {[1, 0, 0], [0, 1, 1], [0, -1, 1], [12, 499, 1], [12, -499, 1]};
+printf "C_2(Q) = {oo, (0, +-1), (12, +-499)}\n";

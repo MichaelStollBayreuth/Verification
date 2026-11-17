@@ -4,6 +4,29 @@
 // described in "An application of `Selmer Group Chabauty' to arithmetic dynamics".
 //
 // M. Stoll, started 2019-10-24
+//
+// Revised 2026-11 (for the revised paper and the rerun of its tables):
+// (i)   the check of Assumption (A3) of the revised paper: the kernel of the map
+//       Sel_2(J) --> F_2^g (localization at 2 followed by log' mod 2) is delta(J(Q)[2^oo]),
+//       i.e., dim Sel_2(J) - dim(image in F_2^g) = dim J(Q)[2]; without it the final verdict
+//       is not a proof. (A3) replaces the assumption of 2019 that Sel_2(J) --> H_2 is
+//       injective: when that map is not injective, the code computes Sel_2(J) inside the
+//       relaxed Selmer group and goes on (the 2019 code stopped there);
+// (ii)  an assertion that the precision suffices for the reduction of log' modulo 2;
+// (iii) a deterministic search for local points at an odd bad prime before the random one,
+//       and a distinct code when the local image is still undetermined.
+// SelChab(g, h) now returns three values: flag, d, info, where
+//   flag = true iff the method (with (A3)) proves C(Q) = {oo, (0, h(0)), (0, -h(0))};
+//   d    = dim Sel_2(J) as before (-p if the local image at p was not determined);
+//   info = <code, dim J(Q)[2], dim of the image of Sel_2(J) in F_2^g (-1: not computed),
+//           whether Sel_2(J) --> H_2 is injective>, with
+//          code one of "SEL0" (Sel_2(J) = 0), "OK" (all checks passed and (A3) holds),
+//          "A3FAIL" (all checks of the residue disks passed, but (A3) fails),
+//          "LOCIMG" (local image at p = -d not determined), "ODDX" (points with x(P) a 2-adic
+//          unit not excluded), "DISC0" (the disk of P_0 meets the image of the Selmer group),
+//          "DISCINF" (the same for infinity).
+// The 2019 algorithm succeeds exactly for the codes "SEL0", "OK" and "A3FAIL" when
+// Sel_2(J) --> H_2 is injective; otherwise it stopped with "false".
 
 // The following is a general function determining the minimum absolute
 // precision of a logarithm series to achieve a desired 2-adic precision
@@ -231,6 +254,70 @@ function SelChab(g, h)
                : i in [1..#factfp]];
     imp := sub<Hp | [locp(toA(pol)) : pol in polsp]>;
     if #Invariants(imp) ne #factfp-1 then
+      // Deterministic search first: points (x0, *) in C(Q_p) with x0 near the roots of f and f'
+      // and the centres of the p-adic factors of f, at depths p^k with k <= v_p(disc).
+      // Points in the non-identity components of the Neron model are found there, while
+      // a random search reaches them only with probability about 1/p per attempt.
+      Zp := Integers(Qp);
+      cents := [r[1] : r in Roots(PolynomialRing(Qp)!f)]
+                 cat [-Coefficient(phi, Degree(phi)-1)/Degree(phi)
+                       : phi in factfp | Valuation(Qp!Degree(phi)) eq 0];
+      try
+        cents cat:= [r[1] : r in Roots(PolynomialRing(Qp)!Derivative(f))];
+      catch e
+        vprintf User1: "no roots of f' at %o\n", p;
+      end try;
+      cents := [Integers()!(Zp!c) : c in cents | Valuation(c) ge 0];
+      for c in cents, k in [0..Valuation(disc, p)], u in [1..10] cat [-10..-1] do
+        x0 := c + p^k*u;
+        fx0 := Qp!Evaluate(f, x0);
+        if not IsWeaklyZero(fx0) and RelativePrecision(fx0) ge 1 and IsSquare(fx0) then
+          imp +:= sub<Hp | locp(toA(x0 - x))>; // image of [(x0, *) - oo]
+          if #Invariants(imp) eq #factfp-1 then break c; end if;
+        end if;
+      end for;
+    end if;
+    if #Invariants(imp) ne #factfp-1 then
+      // Targeted search over Q_{p^d}: an irreducible factor tq of f mod p of degree d >= 2 and
+      // multiplicity >= 2 gives d Frobenius-conjugate singular points of C mod p. Points in
+      // C(Q_p) do not reduce to them, but divisors P + P^sigma + ... + P^(sigma^(d-1)) with P in
+      // C(Q_{p^d}) near them do, and they reach the non-identity components of the Neron model
+      // there. The image of such a divisor is that of (-1)^d ta, ta the minimal polynomial of
+      // x(P) over Q_p. Centres: a lift of a root of tq, and the roots of the derivatives of
+      // the p-adic factors of f near it; x(P) = centre + p^k u, 1 <= k <= v_p(disc), with u
+      // running over (at most 200) lifts of the residue field of Q_{p^d}.
+      Zp := Integers(Qp);
+      for tq in [e[1] : e in Factorization(PolynomialRing(GF(p))!f) | e[2] ge 2] do
+        td := Degree(tq);
+        if td eq 1 then continue; end if;
+        tK := UnramifiedExtension(Qp, td);
+        tF, tred := ResidueClassField(Integers(tK));
+        tr0 := Roots(PolynomialRing(tF)!tq)[1][1] @@ tred;
+        tcs := [tr0];
+        for phi in factfp do
+          try
+            tcs cat:= [r[1] : r in Roots(PolynomialRing(tK)!Derivative(phi))
+                              | Valuation(r[1] - tr0) ge 1];
+          catch e
+            vprintf User1: "no roots of the derivative of %o over Q_(%o^%o)\n", phi, p, td;
+          end try;
+        end for;
+        treps := [u @@ tred : u in tF];
+        treps := treps[1..Min(#treps, 200)];
+        for c in tcs, k in [1..Valuation(disc, p)], u in treps do
+          tx := tK!(c + p^k*u); // c and u may lie in the ring of integers of tK
+          tfx := Evaluate(PolynomialRing(tK)!f, tx);
+          if not IsWeaklyZero(tfx) and RelativePrecision(tfx) ge 1 and IsSquare(tfx) then
+            ta := MinimalPolynomial(tx, Qp);
+            assert Degree(ta) eq td;
+            ta := P![Integers()!(Zp!a) : a in Coefficients(ta)];
+            imp +:= sub<Hp | locp(toA((-1)^td*ta))>;
+            if #Invariants(imp) eq #factfp-1 then break tq; end if;
+          end if;
+        end for;
+      end for;
+    end if;
+    if #Invariants(imp) ne #factfp-1 then
       // Image of 2-torsion is not large enough (<==> nontrivial 4-torsion over Q_p).
       // Test random potential b-polynomials for points on J over Q_p.
       Zp := Integers(Qp);
@@ -249,7 +336,7 @@ function SelChab(g, h)
       if #Invariants(imp) ne #factfp-1 then
         // Random search unsuccessful --> give up.
         printf "unable to determine local image at %o\n", p;
-        return false, -p;
+        return false, -p, <"LOCIMG", m-1, -1, true>;
       end if;
     end if;
     BinHp := [locp(b) : b in Bseq];
@@ -308,23 +395,31 @@ function SelChab(g, h)
                     where imu := UtoBvec(U!u)
                     : u in OrderedGenerators(U1)];
   imU := sub<H2 | U1images>;
-  if Dimension(imU) ne Ngens(U1) then
+  // Sel = rho_2(Sel_2(J)), the image of the 2-Selmer group in H_2.
+  Sel := imU meet imdelta2;
+  inj := Dimension(imU) eq Ngens(U1);
+  if inj then
+    dimSel := Dimension(Sel);
+  else
+    // rho_2 is not injective on U1: Sel_2(J) is the preimage of im(delta_2) in U1. Its image
+    // in H_2 is still Sel, which is all that the checks below use; (A3) needs its dimension.
     vprintf User1: "localization map at 2 is not injective\n";
     H2group := Codomain(loc);
     U1toH2 := hom<U1 -> H2group | [H2group!Eltseq(im) : im in U1images]>;
-    U1 meet:= (sub<H2group | [H2group!Eltseq(d) : d in Generators(imdelta2)]> meet Image(U1toH2))
-                @@ U1toH2;
-    return false, #Invariants(U1);
+    SelU := (sub<H2group | [H2group!Eltseq(d) : d in Generators(imdelta2)]> meet Image(U1toH2))
+              @@ U1toH2;
+    dimSel := #Invariants(SelU);
+    assert dimSel ge Dimension(Sel);
+    // (The test above compares with the number of generators of U1.)
+    inj := dimSel eq Dimension(Sel);
   end if;
-  // Determine the 2-Selmer group.
-  Sel := imU meet imdelta2;
-  if Dimension(Sel) eq 0 then
+  if dimSel eq 0 then
     vprintf User1: "The 2-Selmer group is trivial ==> success!\n";
-    return true, 0;
+    return true, 0, <"SEL0", m-1, 0, true>;
   end if;
-  vprintf User1: "The 2-Selmer group has dimension %o\n", Dimension(Sel);
+  vprintf User1: "The 2-Selmer group has dimension %o\n", dimSel;
   glob := Sel @@ isoim;
-  vprintf User1: "and has basis %o in im(delta_2)\n\n", Basis(glob);
+  vprintf User1: "and its image in H_2 has basis %o in im(delta_2)\n\n", Basis(glob);
   assert Dimension(glob) eq Dimension(Sel);
 
   // We can now verify that there are no rational points with x-coordinate a 2-adic unit.
@@ -336,7 +431,7 @@ function SelChab(g, h)
   vprintf User1: "Image of points with odd x in im(delta_2) is %o\n", imodd @@ isoim;
   if imodd in Sel then
     vprintf User1: "Cannot rule out points with 2-adic unit x-coordinate\n";
-    return false, Dimension(Sel);
+    return false, dimSel, <"ODDX", m-1, -1, inj>;
   else
     vprintf User1: "There are no rational points P with x(P) a 2-adic unit\n";
   end if;
@@ -371,14 +466,25 @@ function SelChab(g, h)
   assert forall{j : j in [1..g] | Valuation(ech[j,j]) lt prec};
   // Convert into a matrix over Q and invert.
   trans := ChangeRing(ech, Rationals())^-1;
-  vprintf User1: "The tranformation matrix log --> log' is\n\%o\n", trans;
+  vprintf User1: "The transformation matrix log --> log' is\n\%o\n", trans;
   loss := Min({Valuation(c, 2) : c in Eltseq(trans) | c ne 0});
+  // The entries of logmat*trans are known modulo 2^(prec+loss); reduction mod 2 needs >= 1.
+  assert prec + loss ge 1;
   // Set up map from im(delta_2) to im(log)/2 im(log).
   mat := ChangeRing(ChangeRing(logmat*ChangeRing(trans, Q2), Z2), GF(2));
+  assert Rank(mat) eq g;  // the reduction J(Q_2) -> F_2^g is onto
   T := KSpace(GF(2), g);
   Vimdel2toT := hom<Vimdel2 -> T | mat>;
   globinT := glob @ Vimdel2toT;
   vprintf User1: "Image of Selmer group in T generated by %o\n\n", Basis(globinT);
+  // Check (A3): the kernel of Sel_2(J) --> T is delta(J(Q)[2^oo]). This group always lies in
+  // the kernel and has dimension dim J(Q)[2] = m - 1, so (A3) <==> the dimensions match.
+  // Without (A3), a point of J(Q) outside J(Q)_tors + 2J(Q) can have log' in 2 Z_2^g,
+  // and the checks of the residue disks below prove nothing.
+  assert dimSel - Dimension(globinT) ge m - 1;
+  A3 := dimSel - Dimension(globinT) eq m - 1;
+  vprintf User1: "(A3) %o: dim Sel = %o, dim of its image in T = %o, dim J(Q)[2] = %o\n\n",
+                 A3 select "holds" else "FAILS", dimSel, Dimension(globinT), m-1;
 
   // Now look at points with v_2(x) > 0.
   vprintf User1: "Considering points with even x...\n";
@@ -397,7 +503,7 @@ function SelChab(g, h)
   // Transform using trans.
   logs := Eltseq(Vector(logs)*ChangeRing(trans, Pws));
   flag := check(logs, prec, T, globinT);
-  if not flag then return false, Dimension(Sel); end if;
+  if not flag then return false, dimSel, <"DISC0", m-1, Dimension(globinT), inj>; end if;
   vprintf User1: "There are no rational points P with x(P) /= 0 and v_2(x(P)) > 0\n\n";
 
   // Now consider the residue class of the point at infinity.
@@ -428,8 +534,8 @@ function SelChab(g, h)
   // Transform using trans
   logs := Eltseq(Vector(logs)*ChangeRing(trans, Pws));
   flag := check(logs, prec, T, globinT);
-  if not flag then return false, Dimension(Sel); end if;
+  if not flag then return false, dimSel, <"DISCINF", m-1, Dimension(globinT), inj>; end if;
   vprintf User1: "There are no rational points P with v_2(x(P)) < 0\n\n";
 
-  return true, Dimension(Sel);
+  return A3, dimSel, <A3 select "OK" else "A3FAIL", m-1, Dimension(globinT), inj>;
 end function;
