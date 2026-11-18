@@ -1,4 +1,4 @@
-# Strange characters mod p for all primes p < 1000000.
+# Strange characters mod p for all primes p < 2000000.
 # Derickx-Stoll, "Prime order torsion on elliptic curves over number fields, Part I: Asymptotics";
 # for the definitions see Definition 5.1 there: a newform f of weight 2 for Gamma_1(p) with
 # nontrivial character chi is strange if L(f, 1) = 0, and chi is strange if there is a strange
@@ -11,15 +11,15 @@
 #   strdim  the number of strange newforms of level p whose character has order n
 #           (strdim(p) is the sum over the lines for p; only 8713 has two lines)
 #
-# Sources: p < 200000: Table 2 of the paper (TABLE2 in strange_primes.magma); 200000 < p < 1000000:
+# Sources: p < 200000: Table 2 of the paper (TABLE2 in strange_primes.magma); 200000 < p < 2000000:
 # the search on the HPC cluster lipwig of the University of Bayreuth (DFG funding number 422127126),
 # October/November 2026, one job per pair (p, n) (see cluster/): with strange_primes.magma
 # (search_pair.m) for p < about 450000, and with the sparse method of sparse/ (after F. Najman) for
 # most pairs with larger p and for all pairs with p > 500000. Every candidate was verified in
 # characteristic 0, with strange_primes.magma or with sparse/crt_verify.py. The search covers all
-# pairs (p, n) and was complete for p < 1007089 on 2026-11-07, so the list is complete for p < 1000000.
+# pairs (p, n) and was complete for p < 2000000 on 2026-11-18.
 #
-# 149 strange characters at 148 strange primes. Whitespace-separated columns; lines starting
+# 186 strange characters at 185 strange primes. Whitespace-separated columns; lines starting
 # with # are comments.
 #
 #      p  order  strdim
@@ -172,3 +172,40 @@
   911917      6       2
   961241     10       4
   989917      6       2
+ 1000273      3       2
+ 1017649     12       4
+ 1023313     12       4
+ 1038253      6       2
+ 1042333      6       2
+ 1079629      6       2
+ 1100557      3       2
+ 1149601      3       2
+ 1155733      6       2
+ 1181461      6       2
+ 1228153      3       2
+ 1247581      6       2
+ 1276777     12       4
+ 1281961      3       2
+ 1286371      5       4
+ 1366297     12       4
+ 1421521      3       2
+ 1450297      3       2
+ 1484233      3       2
+ 1485853      6       2
+ 1559893      6       2
+ 1567249      3       2
+ 1569901      6       2
+ 1588393      3       2
+ 1615333      6       2
+ 1630621      6       2
+ 1682101      6       2
+ 1697701      6       2
+ 1771453      6       2
+ 1803541      6       2
+ 1835593     12       4
+ 1885021      6       2
+ 1886509      2       2
+ 1907053      6       2
+ 1923877      6       2
+ 1949881      3       2
+ 1951501      6       2
